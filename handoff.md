@@ -212,3 +212,13 @@ GitHub 仓库：https://github.com/northernmelody/pixel-room
 
 - 手机上默认只显示时间、点击展开完整信息（需 JS 交互）；
 - 10 秒无操作自动淡出时间卡片（需 JS 计时器）。
+
+## 10. 聊天界面标题栏 MOMO（2026-08）
+
+- 位置：`js/roomLayout.js` → `drawMonitorContent()` 的 `case 'chat'`。
+- 新增 `PIXEL_FONT`（4×5 点阵字体表，M/O），聊天屏幕顶部绘制标题栏：
+  - 放大屏（`w>=42 && h>=16`）：7px 标题栏（底色 `#1a2132` + 顶边/分隔线 `#2e3a56`）+ 点阵名字
+    "MOMO"（`#8ab4ff`，1px 点距）；气泡下移至标题栏下方，数量按 `(h-10-headerH)/4` 自适应。
+  - 极小屏（室内 16×18 显示器）：只画 2×2 在线绿点（`#4ae07a`），气泡布局保持不变。
+- 验证：放大屏 getImageData 采样确认底色/边框/M·O 字形像素正确；室内小屏绿点+气泡正常
+  （颜色受屏幕冷光叠加影响）；截图 `_shots/chat-momo-modal.png` / `chat-momo-scene.png`。

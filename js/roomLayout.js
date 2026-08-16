@@ -73,6 +73,11 @@
 
   // ---- 工具 ----
   function px(ctx, x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+  // 4x5 点阵像素字体（聊天标题栏名字用，行 = 4bit 掩码，MSB 在左）
+  const PIXEL_FONT = {
+    M: [9, 13, 11, 9, 9],   // #..# / ##.# / #.## / #..# / #..#
+    O: [6, 9, 9, 9, 6]      // .##. / #..# / #..# / #..# / .##.
+  };
   function shade(hex, f) {
     const n = parseInt(hex.slice(1), 16);
     let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
@@ -1331,14 +1336,40 @@
       }
       case 'chat': {
         px(ctx, x, y + 4, w, h - 4, '#10141f');
-        // 气泡数量随屏幕高度自适应（小屏不溢出）
-        const bn = Math.min(5, Math.max(1, Math.floor((h - 10) / 4)));
+        // ---- 顶部标题栏：聊天对象名 MOMO ----
+        let headerH = 0;
+        if (w >= 42 && h >= 16) {
+          // 完整标题栏（放大屏）：底色 + 顶边 + 点阵名字 + 分隔线
+          headerH = 7;
+          px(ctx, x, y + 4, w, headerH, '#1a2132');
+          px(ctx, x, y + 4, w, 1, '#2e3a56');
+          const name = 'MOMO', cw = 4, ch = 5, gap = 1;
+          let sx = x + 3;
+          for (let ci = 0; ci < name.length; ci++) {
+            const glyph = PIXEL_FONT[name[ci]];
+            if (!glyph) continue;
+            for (let gy = 0; gy < ch; gy++) {
+              const bits = glyph[gy];
+              for (let gx = 0; gx < cw; gx++) {
+                if (bits & (1 << (3 - gx))) px(ctx, sx + gx, y + 5 + gy, 1, 1, '#8ab4ff');
+              }
+            }
+            sx += cw + gap;
+          }
+          px(ctx, x, y + 4 + headerH - 1, w, 1, '#2e3a56');
+        } else if (w >= 6) {
+          // 极小屏（室内显示器）：只画在线绿点，不影响气泡布局
+          px(ctx, x + 2, y + 5, 2, 2, '#4ae07a');
+        }
+        // 气泡数量随屏幕高度自适应（小屏不溢出），标题栏占位后下移
+        const bn = Math.min(5, Math.max(1, Math.floor((h - 10 - headerH) / 4)));
+        const bubbleTop = y + 8 + headerH;
         for (let i = 0; i < bn; i++) {
           const at = ((t * 0.6 + i * 0.7) % 5);
           const mw = [10, 14, 8, 12, 9][i];
           const bw = Math.min(mw, Math.max(4, w - 8)); // 小屏限宽
           if (at > 0.15) {
-            const my = Math.floor(y + 8 + i * 4);
+            const my = Math.floor(bubbleTop + i * 4);
             if (i % 2 === 0) {
               px(ctx, x + 3, my, bw, 3, '#2a3a5e');
               px(ctx, x + 3, my + 3, 2, 1, '#2a3a5e');
