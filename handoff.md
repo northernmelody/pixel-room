@@ -158,8 +158,16 @@ GitHub 仓库：https://github.com/northernmelody/pixel-room
 - 猫保持 7.4 放大后的尺寸；interaction.js 摸猫区域保持加大
 - 验证：`node --check` 通过；drawHead 调用点恢复 hx-6/hx-7/hx-5 原偏移
 
+### 7.7 回滚猫尺寸并锁定橘色（js/cat.js / js/interaction.js）
+- 撤销 7.4 的猫改动：身体恢复 16×10、头部恢复 8×8，移除毛斑点/鼻子/3px 眼睛
+- **锁定橘猫配色**：PALETTES 精简为单一橘色（body `#e89a4a` / stripe `#c47a2e` / belly `#f7d9a8` / dark `#a0601f`），init() 不再按存档 catSeed 随机选色
+- interaction.js 摸猫判定区域恢复 ±9px × FLOOR-16
+- 保留：7.2 的 drawCat（16×10 身体 + 8×8 头 + globalAlpha 重置）、7.5 的自动关灯
+- 验证：`node --check` 通过
+
 ## 8. 提交记录（本轮）
 
 | Commit | 说明 |
 | --- | --- |
 | cd73248 | 界面修复（肤色/头部/猫/屏幕条纹）+ 自动关灯 + 回滚小人尺寸 + 本交接文档 |
+| （见 git log，本轮提交） | 回滚猫尺寸 + 锁定橘猫配色 + 交接文档更新 |

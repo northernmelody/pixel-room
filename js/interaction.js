@@ -54,9 +54,9 @@
       openComputer();
       return;
     }
-    // 猫（身体 20×12 + 头 12×12，比旧版大）
+    // 猫
     const cp = P.Cat.pos();
-    if (Math.abs(p.x - cp.x) <= 11 && p.y >= FLOOR - 24 && p.y <= FLOOR + 2) {
+    if (Math.abs(p.x - cp.x) <= 9 && p.y >= FLOOR - 16 && p.y <= FLOOR + 2) {
       P.Cat.pet();
       if (P.UI) P.UI.toast('🐱 喵～ 摸到猫了！');
       return;

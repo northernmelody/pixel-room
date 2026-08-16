@@ -7,20 +7,16 @@
   const C = P.Config;
   const FLOOR = C.FLOOR_Y, W = C.LOGICAL_W;
 
+  // 锁定橘猫配色（单一配色）
   const PALETTES = [
-    { body: '#e89a4a', stripe: '#c47a2e', belly: '#f7d9a8', dark: '#a0601f' }, // 橘猫
-    { body: '#9aa4b0', stripe: '#7c8794', belly: '#d8dee8', dark: '#5c6672' }, // 灰猫
-    { body: '#e8d2a0', stripe: '#c8ae72', belly: '#fdf0d0', dark: '#a88e52' }, // 奶油
-    { body: '#b0a0c8', stripe: '#8f7fa8', belly: '#e4dcf0', dark: '#6e5f88' }, // 紫灰
-    { body: '#c8908a', stripe: '#a87068', belly: '#f0dcd8', dark: '#8a5850' }  // 玳瑁
+    { body: '#e89a4a', stripe: '#c47a2e', belly: '#f7d9a8', dark: '#a0601f' } // 橘猫
   ];
 
   let cat = null;
 
   function init() {
-    const seed = P.Storage.state.catSeed || 0;
     cat = {
-      x: 60, dir: -1, palette: PALETTES[seed % PALETTES.length],
+      x: 60, dir: -1, palette: PALETTES[0],
       state: 'idle', stateT: 0, dur: 2,
       animT: Math.random() * 10,
       moodT: 0, target: null,
@@ -181,76 +177,57 @@
   // ============================================================
   function drawCat(ctx, x, y, direction, palette, pose) {
     ctx.globalAlpha = 1;  // 关键：重置透明度
-    x = Math.floor(x);
-    y = Math.floor(y);
 
-    // 轮廓（比身体大 2px，实色深色）
+    // 轮廓
     ctx.fillStyle = palette.dark;
-    ctx.fillRect(x - 1, y - 1, 22, 14);
+    ctx.fillRect(Math.floor(x - 1), Math.floor(y - 1), 18, 12);
 
-    // 身体 20×12
+    // 身体
     ctx.fillStyle = palette.body;
-    ctx.fillRect(x, y, 20, 12);
+    ctx.fillRect(Math.floor(x), Math.floor(y), 16, 10);
 
     // 肚皮
     ctx.fillStyle = palette.belly;
-    ctx.fillRect(x + 5, y + 7, 10, 5);
+    ctx.fillRect(Math.floor(x + 4), Math.floor(y + 6), 8, 4);
 
     // 条纹
     ctx.fillStyle = palette.stripe;
-    ctx.fillRect(x + 2, y + 1, 3, 2);
-    ctx.fillRect(x + 8, y, 3, 2);
-    ctx.fillRect(x + 14, y + 1, 3, 2);
+    ctx.fillRect(Math.floor(x + 2), Math.floor(y + 1), 2, 2);
+    ctx.fillRect(Math.floor(x + 7), Math.floor(y), 2, 2);
+    ctx.fillRect(Math.floor(x + 12), Math.floor(y + 1), 2, 2);
 
-    // 毛斑点（确定性伪随机：1px 点，密度 10%，静态不闪烁）
-    const seed = parseInt(palette.body.slice(1), 16) || 1;
-    for (let py = 0; py < 7; py++) {
-      for (let px = 0; px < 20; px++) {
-        const h = ((px * 73856093) ^ (py * 19349663) ^ (seed * 83492791)) >>> 0;
-        if (h % 1000 < 100) {
-          ctx.fillStyle = palette.stripe;
-          ctx.fillRect(x + px, y + py, 1, 1);
-        }
-      }
-    }
-
-    // 头部 12×12（右上方，叠在身体上）
+    // 头部
+    ctx.fillStyle = palette.body;
+    ctx.fillRect(Math.floor(x + 8), Math.floor(y - 4), 8, 8);
     // 头部轮廓
     ctx.fillStyle = palette.dark;
-    ctx.fillRect(x + 8, y - 9, 14, 14);
+    ctx.fillRect(Math.floor(x + 7), Math.floor(y - 5), 10, 10);
     ctx.fillStyle = palette.body;
-    ctx.fillRect(x + 9, y - 8, 12, 12);
+    ctx.fillRect(Math.floor(x + 8), Math.floor(y - 4), 8, 8);
 
     // 耳朵
     ctx.fillStyle = palette.body;
-    ctx.fillRect(x + 10, y - 12, 4, 4);
-    ctx.fillRect(x + 15, y - 12, 4, 4);
-    // 耳内
+    ctx.fillRect(Math.floor(x + 9), Math.floor(y - 7), 3, 3);
+    ctx.fillRect(Math.floor(x + 13), Math.floor(y - 7), 3, 3);
+    // 耳朵内部
     ctx.fillStyle = palette.belly;
-    ctx.fillRect(x + 11, y - 11, 1, 2);
-    ctx.fillRect(x + 16, y - 11, 1, 2);
+    ctx.fillRect(Math.floor(x + 10), Math.floor(y - 6), 1, 1);
+    ctx.fillRect(Math.floor(x + 14), Math.floor(y - 6), 1, 1);
 
-    // 眼睛：3px 深色 + 1px 高光 + 1px 反光
+    // 眼睛
     ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(x + 11, y - 6, 3, 3);   // 左眼
-    ctx.fillRect(x + 16, y - 6, 3, 3);   // 右眼
+    ctx.fillRect(Math.floor(x + 10), Math.floor(y - 2), 2, 2);
+    ctx.fillRect(Math.floor(x + 14), Math.floor(y - 2), 2, 2);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(x + 11, y - 6, 1, 1);   // 高光
-    ctx.fillRect(x + 16, y - 6, 1, 1);
-    ctx.fillStyle = '#9ad4ff';
-    ctx.fillRect(x + 13, y - 4, 1, 1);   // 反光
-    ctx.fillRect(x + 18, y - 4, 1, 1);
-
-    // 鼻子
-    ctx.fillStyle = '#e0706a';
-    ctx.fillRect(x + 14, y - 3, 2, 1);
+    ctx.fillRect(Math.floor(x + 10), Math.floor(y - 2), 1, 1);
+    ctx.fillRect(Math.floor(x + 14), Math.floor(y - 2), 1, 1);
 
     // 胡须
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(x + 5, y - 4, 4, 1);
-    ctx.fillRect(x + 5, y - 2, 4, 1);
-    ctx.fillRect(x + 20, y - 4, 4, 1);
-    ctx.fillRect(x + 20, y - 2, 4, 1);
+    ctx.fillRect(Math.floor(x + 6), Math.floor(y - 1), 3, 1);
+    ctx.fillRect(Math.floor(x + 6), Math.floor(y), 3, 1);
+    ctx.fillRect(Math.floor(x + 17), Math.floor(y - 1), 3, 1);
+    ctx.fillRect(Math.floor(x + 17), Math.floor(y), 3, 1);
   }
 
   function draw(ctx, st) {
@@ -264,9 +241,9 @@
 
     // 影子
     ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    ctx.fillRect(x - 11, FLOOR - 1, 22, 2);
+    ctx.fillRect(x - 8, FLOOR - 1, 18, 2);
 
-    drawCat(ctx, x - 10, y - 12, d, pal, c.state);
+    drawCat(ctx, x - 7, y - 10, d, pal, c.state);
 
     // 心情爱心
     if (c.moodT > 0) {
