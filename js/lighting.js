@@ -394,10 +394,66 @@
     ctx.fillRect(0, 0, W, H);
   }
 
+  // ============================================================
+  // 自动关灯：23:00 关非卧室灯 / 当天随机时刻关卧室灯 / 入睡后 5 分钟关卧室灯
+  // ============================================================
+  let bedroomOffTime = null; // 当天卧室关灯时间（23.0-24.0 随机）
+
+  // 每天初始化/恢复卧室随机关灯时刻（存于存档，跨天重置）
+  function initDailyRandom() {
+    const st = P.Storage.state;
+    const tp = P.Time.now();
+    const today = tp.year + '-' + tp.month + '-' + tp.day;
+    if (!st.bedroomOffTime || st.bedroomOffTime.date !== today) {
+      bedroomOffTime = { date: today, time: 23 + Math.random() };
+      st.bedroomOffTime = bedroomOffTime;
+      P.Storage.save();
+    } else {
+      bedroomOffTime = st.bedroomOffTime;
+    }
+  }
+
+  // 每帧检查（时间取东八区浮点小时，如 23.5 = 23:30）
+  function checkAutoLights() {
+    const tp = P.Time.now();
+    const t = tp.hour;
+    const lamps = P.Storage.state.lamps;
+    let changed = false;
+
+    // 23:00 关闭除卧室外的所有灯（工作区/卫生间/厨房吊灯 + 工作区台灯）
+    if (t >= 23.0) {
+      if (lamps.ceiling[1]) { lamps.ceiling[1] = false; changed = true; }
+      if (lamps.ceiling[2]) { lamps.ceiling[2] = false; changed = true; }
+      if (lamps.ceiling[3]) { lamps.ceiling[3] = false; changed = true; }
+      if (lamps.deskLamp) { lamps.deskLamp = false; changed = true; }
+    }
+
+    // 当天随机时刻（23.0-24.0）关闭卧室灯（吊灯 + 床头灯）
+    if (bedroomOffTime && t >= bedroomOffTime.time) {
+      if (lamps.ceiling[0]) { lamps.ceiling[0] = false; changed = true; }
+      if (lamps.nightLamp) { lamps.nightLamp = false; changed = true; }
+    }
+
+    // 小人入睡后 5 分钟关卧室吊灯
+    const sl = P.Character.sleepInfo ? P.Character.sleepInfo() : null;
+    if (sl && sl.sleeping && sl.startMin !== null && lamps.ceiling[0]) {
+      let elapsed = (tp.hourInt * 60 + tp.min) - sl.startMin;
+      if (elapsed < 0) elapsed += 1440; // 跨零点
+      if (elapsed > 5) { lamps.ceiling[0] = false; changed = true; }
+    }
+
+    if (changed) {
+      lamps.touched = true; // 转入手动模式，让关灯状态生效
+      P.Storage.save();
+    }
+  }
+
   P.Lighting = {
     compute: compute,
     drawSky: drawSky,
     drawWindowBackdrop: drawWindowBackdrop,
-    applyInterior: applyInterior
+    applyInterior: applyInterior,
+    initDailyRandom: initDailyRandom,
+    checkAutoLights: checkAutoLights
   };
 })();

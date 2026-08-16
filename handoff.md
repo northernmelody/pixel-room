@@ -114,3 +114,52 @@ GitHub 仓库：https://github.com/northernmelody/pixel-room
 - 像素分析：`node _tools/analyze-png.js <mode> <png>`（ascii/region/lregion/crop/grid）
   - 画布在 1264x569 视口中居中：offset(147.5625, 12)，比例 3.02774 px/逻辑像素
 - 画面状态验证：`agent-browser eval "..."` 读取 window.PixelRoom 内部状态
+
+## 7. 本轮会话任务（2026-08 修复轮：界面修复 + 自动关灯 + 回滚）
+
+> 基线：eb29716。本轮 6 个子任务均已提交并推送（见 §8）。
+
+### 7.1 小人肤色与头部绘制（js/character.js）
+- SKIN 改为暖黄偏白 `#f5e6c8`，新增 `SKIN_SHADOW` / `SKIN_HIGHLIGHT`
+- `drawHead()` 重写为 12×12 头部：深棕轮廓（大 2px）+ 实色皮肤填充 + 下巴阴影 + 额头高光 + 头发/刘海 + 2px 眼睛（含白色高光）+ 嘴巴
+- 关键：函数开头强制 `ctx.globalAlpha = 1`（重置透明度，防止光照叠加导致画面发灰）
+- 全部姿势调用点适配新签名 `drawHead(ctx, x, y, direction)`
+
+### 7.2 猫的绘制（js/cat.js）
+- 新增 `drawCat()`：轮廓 + 身体 + 肚皮 + 条纹 + 头部 + 耳朵 + 眼睛 + 胡须，开头强制 `globalAlpha = 1`
+- `draw()` 改为统一调用 `drawCat`（原 per-pose 绘制函数与 px/shadeCat 助手移除）
+
+### 7.3 屏幕条纹修复（js/roomLayout.js / js/main.js / js/interaction.js / css/style.css）
+- 根因：画布 **CSS 非整数缩放** → 逻辑像素行映射到宽窄不一的显示行（画布内坐标本就全为整数）
+- `drawMonitorContent()`：x/y/w/h 入口全部 `Math.floor` + 不透明边框（大屏 2px / 小屏 1px）+ 背景 `#1e1e1e`
+- `main.js fitSceneSize()`：场景画布 CSS 尺寸取整到 PIXEL(4) 整数倍，resize 时重算
+- `interaction.js fitComputer()`：放大屏画布宽度取整到 16 的倍数（高 ×5/8 必为偶数）
+- `style.css`：`#scene-wrap` 加 flex 居中
+
+### 7.4 像素密集化（小人部分已回滚，见 7.6）
+- 曾将小人头 12×12→16×16、身体 20×24；猫身体 16×10→20×12、头 8×8→12×12
+- 细节：三层发色（HAIR/HAIR2/HAIR_HIGHLIGHT）、每 4px 一条衣物褶皱、猫毛 10% 确定性斑点、3px 眼睛+高光+反光
+- **用户确认回滚小人**：见 7.6；猫保持放大版本
+- 配套：interaction.js 摸猫判定区域加大（±11px × FLOOR-24）
+
+### 7.5 自动关灯 autoLightsOff（js/lighting.js / js/character.js / js/main.js）
+- `initDailyRandom()`：每天随机卧室关灯时刻 `23 + Math.random()`（23.0–24.0），存 `P.Storage.state.bedroomOffTime`（含 date，跨天重置），启动时由 main.js 调用
+- `checkAutoLights()`（主循环每帧）：
+  1. 23:00 关工作区/卫生间/厨房吊灯（`lamps.ceiling[1..3]`）+ 工作区台灯 `deskLamp`
+  2. 当天随机时刻关卧室吊灯 `ceiling[0]` + 床头灯 `nightLamp`
+  3. 小人入睡 5 分钟后关卧室吊灯（`P.Character.sleepInfo()`，已处理跨零点）
+- character.js 新增 `sleepStartMin` 追踪与 `sleepInfo()` 导出
+- 关键适配：关灯时置 `lamps.touched = true` 转手动模式（否则 lampOn() 夜间自动开灯会忽略关灯状态）
+- 调试：`index.html?t=23:05`
+
+### 7.6 回滚小人尺寸（js/character.js，本任务）
+- 撤销 7.4 的小人改动：头部恢复 12×12、身体恢复 8×12、全部姿势坐标与影子恢复原值、移除 HAIR_HIGHLIGHT
+- **保留**：7.1 的 SKIN 颜色与 drawHead 重写（含 alpha 重置）、7.5 的入睡时间追踪（均与尺寸无关）
+- 猫保持 7.4 放大后的尺寸；interaction.js 摸猫区域保持加大
+- 验证：`node --check` 通过；drawHead 调用点恢复 hx-6/hx-7/hx-5 原偏移
+
+## 8. 提交记录（本轮）
+
+| Commit | 说明 |
+| --- | --- |
+| （见 git log，本轮会话提交） | 界面修复（肤色/头部/猫/屏幕条纹）+ 自动关灯 + 回滚小人尺寸 + 本交接文档 |

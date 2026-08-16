@@ -7,12 +7,31 @@
 
   let last = 0;
 
+  // 画布 CSS 显示尺寸取整到逻辑像素（×PIXEL）的整数倍，
+  // 避免浏览器把 1280×720 位图缩放到非整数尺寸，导致像素行错位、出现条纹
+  function fitSceneSize() {
+    const c = document.getElementById('scene');
+    if (!c || !P.Config) return;
+    const PIXEL = P.Config.PIXEL;
+    const availW = window.innerWidth - 24;
+    const availH = window.innerHeight - 24;
+    let w = Math.min(availW, availH * 16 / 9);
+    w = Math.max(320, Math.floor(w / PIXEL) * PIXEL);
+    let h = Math.round(w * 9 / 16);
+    h = Math.max(180, Math.floor(h / PIXEL) * PIXEL);
+    c.style.width = w + 'px';
+    c.style.height = h + 'px';
+  }
+
   function init() {
     P.Storage.load();
+    if (P.Lighting && P.Lighting.initDailyRandom) P.Lighting.initDailyRandom();
     const canvas = document.getElementById('scene');
     if (!canvas) return;
 
     P.Renderer.init(canvas);
+    fitSceneSize();
+    window.addEventListener('resize', fitSceneSize);
     P.Character.init();
     P.Cat.init();
     P.WeatherEffects.init();
@@ -33,6 +52,7 @@
 
     // ---- 更新 ----
     P.Character.update(dt);
+    if (P.Lighting && P.Lighting.checkAutoLights) P.Lighting.checkAutoLights();
     P.Cat.update(dt);
     P.WeatherEffects.update(dt);
     P.UI.update(dt);

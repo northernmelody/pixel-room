@@ -1265,7 +1265,24 @@
   // 屏幕内容（与放大弹窗共用）
   // ============================================================
   function drawMonitorContent(ctx, mode, t, x, y, w, h) {
-    px(ctx, x, y, w, h, '#0e1119');
+    // 关键：屏幕内容的所有坐标取整，避免半像素坐标触发抗锯齿产生条纹
+    x = Math.floor(x);
+    y = Math.floor(y);
+    w = Math.floor(w);
+    h = Math.floor(h);
+
+    // 屏幕背景
+    ctx.fillStyle = '#1e1e1e';
+    ctx.fillRect(x, y, w, h);
+
+    // 边框（不透明，覆盖屏幕边缘；小屏 1px / 放大屏 2px）
+    const fw = w >= 100 ? 2 : 1;
+    ctx.fillStyle = '#3d3d3d';
+    ctx.fillRect(x - fw, y - fw, w + fw * 2, fw);   // 上
+    ctx.fillRect(x - fw, y + h, w + fw * 2, fw);    // 下
+    ctx.fillRect(x - fw, y, fw, h);                 // 左
+    ctx.fillRect(x + w, y, fw, h);                  // 右
+
     // 状态栏
     px(ctx, x, y, w, 2, '#232936');
     px(ctx, x + 2, y + 1, 1, 1, '#5aa0ff');
@@ -1280,7 +1297,7 @@
         const lines = 16;
         const scroll = Math.floor(t * 2.4);
         for (let i = 0; i < lines; i++) {
-          const ly = y + 8 + i * 4 - (scroll % 8) * 2;
+          const ly = Math.floor(y + 8 + i * 4 - (scroll % 8) * 2);
           if (ly < y + 5 || ly > y + h - 4) continue;
           const n = (i + scroll) % 8;
           const len = [4, 9, 6, 12, 5, 8, 10, 3][n];
@@ -1288,7 +1305,7 @@
           px(ctx, x + 6, ly, len, 1, col);
           if (n % 3 === 0) px(ctx, x + 6, ly + 1, 2, 1, '#4a5468');
         }
-        if (Math.floor(t * 2) % 2 === 0) px(ctx, x + 10, y + 8 + ((Math.floor(t * 3) % 12)) * 4, 1, 4, '#ffffff');
+        if (Math.floor(t * 2) % 2 === 0) px(ctx, x + 10, y + 8 + (Math.floor(t * 3) % 12) * 4, 1, 4, '#ffffff');
         break;
       }
       case 'video': {
@@ -1313,7 +1330,7 @@
           const at = ((t * 0.6 + i * 0.7) % 5);
           const mw = [10, 14, 8, 12, 9][i];
           if (at > 0.15) {
-            const my = y + 8 + i * 4;
+            const my = Math.floor(y + 8 + i * 4);
             if (i % 2 === 0) {
               px(ctx, x + 3, my, mw, 3, '#2a3a5e');
               px(ctx, x + 3, my + 3, 2, 1, '#2a3a5e');
@@ -1329,8 +1346,8 @@
       }
       case 'slacking': {
         px(ctx, x, y + 4, w, h - 4, '#0f1220');
-        const fx = x + (((t * 6) % (w + 8)) | 0) - 4;
-        const fy = y + Math.round(h / 2) - 5;
+        const fx = Math.floor(x + (((t * 6) % (w + 8)) | 0) - 4);
+        const fy = Math.floor(y + Math.round(h / 2) - 5);
         ctx.fillStyle = '#ffb03a';
         px(ctx, fx, fy, 3, 2);
         px(ctx, fx - 1, fy + 1, 5, 2);
@@ -1350,8 +1367,8 @@
         px(ctx, x, y + 4, w, h - 4, '#1a1a24');
         const cols = ['#ff5a7a', '#5aa0ff', '#ffd05a', '#5affa0', '#c9a0ff', '#ff9a5a'];
         for (let i = 0; i < 8; i++) {
-          const bx = x + 4 + ((i * 13 + Math.floor(t * 1.5)) % (w - 10));
-          const by = y + 8 + ((i * 7) % (h - 14));
+          const bx = Math.floor(x + 4 + ((i * 13 + Math.floor(t * 1.5)) % (w - 10)));
+          const by = Math.floor(y + 8 + ((i * 7) % (h - 14)));
           px(ctx, bx, by, 4, 3, cols[i % 6]);
           px(ctx, bx + 2, by + 3, 3, 2, cols[(i + 1) % 6]);
         }

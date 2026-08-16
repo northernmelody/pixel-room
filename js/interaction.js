@@ -24,6 +24,19 @@
     if (close) close.addEventListener('click', closeComputer);
     if (cycle) cycle.addEventListener('click', cycleComputer);
     if (modal) modal.addEventListener('click', function (e) { if (e.target === modal) closeComputer(); });
+    window.addEventListener('resize', function () { if (computerOpen) fitComputer(); });
+  }
+
+  // 放大屏画布 CSS 尺寸取整（宽为 16 的倍数 → 高 ×5/8 必为偶数），避免缩放条纹
+  function fitComputer() {
+    const cc = document.getElementById('computer-canvas');
+    if (!cc) return;
+    const box = cc.parentElement;
+    const avail = (box ? box.clientWidth : 0) - 24; // 减去 .modal-box 内边距
+    if (avail < 160) return;
+    const w = Math.floor(avail / 16) * 16;
+    cc.style.width = w + 'px';
+    cc.style.height = Math.round(w * 5 / 8) + 'px';
   }
 
   function toLogical(e) {
@@ -41,9 +54,9 @@
       openComputer();
       return;
     }
-    // 猫
+    // 猫（身体 20×12 + 头 12×12，比旧版大）
     const cp = P.Cat.pos();
-    if (Math.abs(p.x - cp.x) <= 9 && p.y >= FLOOR - 16 && p.y <= FLOOR + 2) {
+    if (Math.abs(p.x - cp.x) <= 11 && p.y >= FLOOR - 24 && p.y <= FLOOR + 2) {
       P.Cat.pet();
       if (P.UI) P.UI.toast('🐱 喵～ 摸到猫了！');
       return;
@@ -75,6 +88,7 @@
     computerOpen = true;
     computerMode = P.Character.screenMode();
     document.getElementById('computer-modal').classList.remove('hidden');
+    fitComputer();
     updateCaption();
     if (P.Audio) P.Audio.ui();
   }

@@ -179,13 +179,78 @@
   // ============================================================
   // 绘制
   // ============================================================
-  function px(ctx, x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
-  function shadeCat(hex, f) {
-    const n = parseInt(hex.slice(1), 16);
-    let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-    if (f < 0) { const k = 1 + f; r *= k; g *= k; b *= k; }
-    else { r += (255 - r) * f; g += (255 - g) * f; b += (255 - b) * f; }
-    return 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ')';
+  function drawCat(ctx, x, y, direction, palette, pose) {
+    ctx.globalAlpha = 1;  // 关键：重置透明度
+    x = Math.floor(x);
+    y = Math.floor(y);
+
+    // 轮廓（比身体大 2px，实色深色）
+    ctx.fillStyle = palette.dark;
+    ctx.fillRect(x - 1, y - 1, 22, 14);
+
+    // 身体 20×12
+    ctx.fillStyle = palette.body;
+    ctx.fillRect(x, y, 20, 12);
+
+    // 肚皮
+    ctx.fillStyle = palette.belly;
+    ctx.fillRect(x + 5, y + 7, 10, 5);
+
+    // 条纹
+    ctx.fillStyle = palette.stripe;
+    ctx.fillRect(x + 2, y + 1, 3, 2);
+    ctx.fillRect(x + 8, y, 3, 2);
+    ctx.fillRect(x + 14, y + 1, 3, 2);
+
+    // 毛斑点（确定性伪随机：1px 点，密度 10%，静态不闪烁）
+    const seed = parseInt(palette.body.slice(1), 16) || 1;
+    for (let py = 0; py < 7; py++) {
+      for (let px = 0; px < 20; px++) {
+        const h = ((px * 73856093) ^ (py * 19349663) ^ (seed * 83492791)) >>> 0;
+        if (h % 1000 < 100) {
+          ctx.fillStyle = palette.stripe;
+          ctx.fillRect(x + px, y + py, 1, 1);
+        }
+      }
+    }
+
+    // 头部 12×12（右上方，叠在身体上）
+    // 头部轮廓
+    ctx.fillStyle = palette.dark;
+    ctx.fillRect(x + 8, y - 9, 14, 14);
+    ctx.fillStyle = palette.body;
+    ctx.fillRect(x + 9, y - 8, 12, 12);
+
+    // 耳朵
+    ctx.fillStyle = palette.body;
+    ctx.fillRect(x + 10, y - 12, 4, 4);
+    ctx.fillRect(x + 15, y - 12, 4, 4);
+    // 耳内
+    ctx.fillStyle = palette.belly;
+    ctx.fillRect(x + 11, y - 11, 1, 2);
+    ctx.fillRect(x + 16, y - 11, 1, 2);
+
+    // 眼睛：3px 深色 + 1px 高光 + 1px 反光
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(x + 11, y - 6, 3, 3);   // 左眼
+    ctx.fillRect(x + 16, y - 6, 3, 3);   // 右眼
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x + 11, y - 6, 1, 1);   // 高光
+    ctx.fillRect(x + 16, y - 6, 1, 1);
+    ctx.fillStyle = '#9ad4ff';
+    ctx.fillRect(x + 13, y - 4, 1, 1);   // 反光
+    ctx.fillRect(x + 18, y - 4, 1, 1);
+
+    // 鼻子
+    ctx.fillStyle = '#e0706a';
+    ctx.fillRect(x + 14, y - 3, 2, 1);
+
+    // 胡须
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x + 5, y - 4, 4, 1);
+    ctx.fillRect(x + 5, y - 2, 4, 1);
+    ctx.fillRect(x + 20, y - 4, 4, 1);
+    ctx.fillRect(x + 20, y - 2, 4, 1);
   }
 
   function draw(ctx, st) {
@@ -199,18 +264,9 @@
 
     // 影子
     ctx.fillStyle = 'rgba(0,0,0,0.15)';
-    ctx.fillRect(x - 7, FLOOR - 1, 15, 2);
+    ctx.fillRect(x - 11, FLOOR - 1, 22, 2);
 
-    switch (c.state) {
-      case 'sleep': drawSleep(ctx, x, y, t, pal, d); break;
-      case 'zoomies': drawZoom(ctx, x, y, t, pal, d); break;
-      case 'groom': drawGroom(ctx, x, y, t, pal, d); break;
-      case 'happy': drawHappy(ctx, x, y, t, pal, d); break;
-      case 'desk': drawSit(ctx, x, y, t, pal, d); break;
-      case 'rub': drawRub(ctx, x, y, t, pal, d); break;
-      case 'wander': drawWalk(ctx, x, y, t, pal, d); break;
-      default: drawSit(ctx, x, y, t, pal, d); break;
-    }
+    drawCat(ctx, x - 10, y - 12, d, pal, c.state);
 
     // 心情爱心
     if (c.moodT > 0) {
@@ -223,142 +279,6 @@
       ctx.fillRect(hx + 1, hy + 2, 3, 2);
       ctx.fillRect(hx + 2, hy + 3, 1, 1);
     }
-  }
-
-  function drawSit(ctx, x, y, t, pal, d) {
-    // 坐姿（面朝 d）
-    const hx = d > 0 ? 1 : -7;
-    px(ctx, x - 3, y - 8, 6, 7, pal.body);       // 身体
-    px(ctx, x - 2, y - 5, 2, 4, pal.belly);      // 肚皮
-    px(ctx, x + hx, y - 12, 6, 5, pal.body);     // 头
-    px(ctx, x + hx + 1, y - 11, 2, 2, pal.belly);
-    px(ctx, x + hx + (d > 0 ? 4 : 1), y - 11, 1, 1, pal.dark); // 眼
-    px(ctx, x + hx + 1, y - 13, 1, 1, pal.stripe); // 耳
-    px(ctx, x + hx + 4, y - 13, 1, 1, pal.stripe);
-    px(ctx, x - 1, y - 2, 2, 2, pal.body);       // 前爪
-    px(ctx, x - 4, y - 6, 2, 2, pal.body);       // 尾巴
-    px(ctx, x - 5, y - 7, 1, 1, pal.dark);
-    // 条纹 + 毛发斑点
-    px(ctx, x - 1, y - 6, 2, 1, pal.stripe);
-    px(ctx, x - 3, y - 7, 1, 1, pal.stripe);
-    px(ctx, x + 1, y - 4, 1, 1, pal.dark);
-    px(ctx, x - 2, y - 3, 1, 1, pal.stripe);
-    // 头顶高光
-    px(ctx, x - 1, y - 8, 2, 1, shadeCat(pal.body, 0.25));
-  }
-
-  function drawWalk(ctx, x, y, t, pal, d) {
-    const step = Math.sin(t * 14);
-    px(ctx, x - 6, y - 5, 12, 4, pal.body);
-    px(ctx, x - 4, y - 4, 4, 2, pal.belly);
-    px(ctx, x - 4, y - 4, 3, 1, pal.stripe);
-    // 头
-    const hx = d > 0 ? 5 : -11;
-    px(ctx, x + hx, y - 8, 6, 4, pal.body);
-    px(ctx, x + hx + 1, y - 7, 2, 1, pal.belly);
-    px(ctx, x + hx + (d > 0 ? 4 : 1), y - 8, 1, 1, pal.dark);
-    px(ctx, x + hx + (d > 0 ? 1 : 4), y - 9, 1, 1, pal.stripe);
-    px(ctx, x + hx + (d > 0 ? 4 : 1), y - 9, 1, 1, pal.stripe);
-    // 腿
-    const l1 = Math.round(step * 2), l2 = Math.round(-step * 2);
-    px(ctx, x - 4, y - 3 + l1, 2, 3, pal.body);
-    px(ctx, x + 2, y - 3 + l2, 2, 3, pal.body);
-    // 尾巴
-    const sway = Math.round(Math.sin(t * 10) * 2);
-    px(ctx, x - 7, y - 5 + sway, 2, 2, pal.body);
-    px(ctx, x - 8, y - 6 + sway, 1, 1, pal.dark);
-    // 背毛斑点
-    px(ctx, x - 2, y - 4, 1, 1, pal.stripe);
-    px(ctx, x + 1, y - 5, 1, 1, pal.dark);
-    px(ctx, x - 5, y - 5, 1, 1, pal.stripe);
-  }
-
-  function drawSleep(ctx, x, y, t, pal, d) {
-    px(ctx, x - 5, y - 5, 10, 5, pal.body);      // 蜷缩
-    px(ctx, x - 4, y - 4, 8, 3, pal.belly);
-    px(ctx, x - 3, y - 4, 5, 1, pal.stripe);
-    px(ctx, x + (d > 0 ? 5 : -8), y - 4, 4, 3, pal.body); // 头
-    px(ctx, x + (d > 0 ? 6 : -7), y - 5, 1, 1, pal.stripe);
-    px(ctx, x - 6, y - 3, 2, 2, pal.body);       // 尾巴环抱
-    px(ctx, x - 6, y - 2, 3, 1, pal.dark);
-    // 背毛纹理
-    px(ctx, x - 1, y - 4, 1, 1, pal.stripe);
-    px(ctx, x + 1, y - 3, 1, 1, pal.dark);
-    px(ctx, x - 4, y - 5, 1, 1, pal.stripe);
-    // zzz
-    if (Math.floor(t * 1.5) % 2 === 0) {
-      ctx.fillStyle = '#cfd6e8';
-      px(ctx, x + 7, y - 10, 2, 1);
-      px(ctx, x + 9, y - 12, 1, 1);
-    }
-  }
-
-  function drawZoom(ctx, x, y, t, pal, d) {
-    px(ctx, x - 8, y - 4, 16, 3, pal.body);      // 拉长身体
-    px(ctx, x - 6, y - 4, 6, 1, pal.stripe);
-    const hx = d > 0 ? 8 : -12;
-    px(ctx, x + hx, y - 6, 4, 3, pal.body);      // 头前伸
-    px(ctx, x + hx + (d > 0 ? 2 : 1), y - 6, 1, 1, pal.dark);
-    // 腿快速交替
-    const st = Math.sin(t * 30) > 0 ? 1 : 0;
-    px(ctx, x - 6 + st * 2, y - 1, 1, 1, pal.body);
-    px(ctx, x - 2 - st * 2, y - 1, 1, 1, pal.body);
-    px(ctx, x + 2 + st * 2, y - 1, 1, 1, pal.body);
-    px(ctx, x + 6 - st * 2, y - 1, 1, 1, pal.body);
-    // 运动线
-    ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    const off = (t * 20) % 3 | 0;
-    px(ctx, x - (d > 0 ? 10 : -14) - off, y - 3, 2, 1);
-    px(ctx, x - (d > 0 ? 13 : -17) - off, y - 1, 1, 1);
-    px(ctx, x - (d > 0 ? 16 : -20) - off, y - 4, 1, 1);
-  }
-
-  function drawGroom(ctx, x, y, t, pal, d) {
-    const bob = Math.sin(t * 6) > 0 ? 1 : 0;
-    px(ctx, x - 3, y - 7, 6, 6, pal.body);
-    px(ctx, x - 2, y - 4, 2, 3, pal.belly);
-    const hx = d > 0 ? -5 : 1;
-    px(ctx, x + hx, y - 11 + bob, 5, 5, pal.body); // 低头舔
-    px(ctx, x + hx + 1, y - 10 + bob, 2, 2, pal.belly);
-    px(ctx, x + hx + 1, y - 12 + bob, 1, 1, pal.stripe);
-    px(ctx, x + hx + 3, y - 12 + bob, 1, 1, pal.stripe);
-    px(ctx, x - 1, y - 5, 2, 2, pal.belly);       // 舔爪
-    px(ctx, x - 4, y - 5, 2, 2, pal.body);        // 尾巴
-    // 毛纹
-    px(ctx, x + 1, y - 6, 1, 1, pal.stripe);
-    px(ctx, x - 2, y - 7, 1, 1, pal.dark);
-    px(ctx, x - 5, y - 6, 1, 1, pal.stripe);
-  }
-
-  function drawRub(ctx, x, y, t, pal, d) {
-    // 蹭人：身体贴近，来回蹭
-    const wig = Math.round(Math.sin(t * 10));
-    px(ctx, x - 3, y - 8, 6, 7, pal.body);
-    px(ctx, x - 2, y - 5, 2, 4, pal.belly);
-    const hx = d > 0 ? 1 : -7;
-    px(ctx, x + hx, y - 12, 6, 5, pal.body);
-    px(ctx, x + hx + 1, y - 11, 2, 2, pal.belly);
-    px(ctx, x + hx + (d > 0 ? 4 : 1), y - 11, 1, 1, pal.dark);
-    // 尾巴翘起摇摆
-    px(ctx, x - 4, y - 9 + wig, 2, 2, pal.body);
-    px(ctx, x - 5, y - 10 + wig, 1, 1, pal.dark);
-  }
-
-  function drawHappy(ctx, x, y, t, pal, d) {
-    const hx = d > 0 ? 1 : -7;
-    px(ctx, x - 3, y - 8, 6, 7, pal.body);
-    px(ctx, x - 2, y - 5, 2, 4, pal.belly);
-    px(ctx, x + hx, y - 12, 6, 5, pal.body);
-    px(ctx, x + hx + 1, y - 11, 2, 2, pal.belly);
-    // 眯眼笑
-    px(ctx, x + hx + (d > 0 ? 2 : 1), y - 11, 2, 1, pal.dark);
-    px(ctx, x + hx + (d > 0 ? 4 : 3), y - 11, 2, 1, pal.dark);
-    // 尾巴摇
-    const wag = Math.round(Math.sin(t * 16) * 2);
-    px(ctx, x - 4, y - 6 + wag, 2, 2, pal.body);
-    px(ctx, x - 5, y - 7 + wag, 1, 1, pal.dark);
-    // 爪爪
-    px(ctx, x - 1, y - 2, 2, 2, pal.belly);
   }
 
   P.Cat = {

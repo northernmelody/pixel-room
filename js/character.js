@@ -7,7 +7,9 @@
   const C = P.Config;
   const FLOOR = C.FLOOR_Y;
 
-  const SKIN = '#f2c9a0';
+  const SKIN = '#f5e6c8';          // 暖黄偏白
+  const SKIN_SHADOW = '#d9c8a0';   // 阴影
+  const SKIN_HIGHLIGHT = '#fdf8e8'; // 高光
   const HAIR = '#33261c';
   const HAIR2 = '#4a3a28';
 
@@ -48,7 +50,8 @@
       moving: false, target: t,
       animT: Math.random() * 10, walkStep: 0,
       breakT: 25 + Math.random() * 40, breakAt: 0,
-      showerT: 0, sitPose: 0
+      showerT: 0, sitPose: 0,
+      sleepStartMin: null   // 本次入睡时刻（分钟），自动关灯用
     };
     screenMode = pickScreen();
     screenTimer = 8 + Math.random() * 12;
@@ -117,6 +120,13 @@
 
     // 淋浴计时
     if (char.pose === 'shower') char.showerT += dt;
+
+    // 入睡时间记录（自动关灯用：入睡后 5 分钟关卧室灯）
+    if (char.pose === 'sleep') {
+      if (char.sleepStartMin === null) char.sleepStartMin = tp.hourInt * 60 + tp.min;
+    } else {
+      char.sleepStartMin = null;
+    }
   }
 
   function pos() {
@@ -158,20 +168,52 @@
     ctx.fillRect(hx + 1, topY + 5, 1, 2);   // 侧身高光线
   }
 
-  function drawHead(ctx, hx, topY, d, skin, hair) {
-    // 头 8x10
-    ctx.fillStyle = skin;
-    ctx.fillRect(hx - 4, topY + 4, 8, 6);
-    ctx.fillStyle = hair;
-    ctx.fillRect(hx - 4, topY, 8, 5);
-    ctx.fillRect(hx - 4, topY + 1, 2, 6);   // 后脑发
-    // 眼睛（朝向 d）
-    ctx.fillStyle = '#2a2a3a';
-    if (d > 0) ctx.fillRect(hx + 2, topY + 6, 1, 1);
-    else ctx.fillRect(hx - 3, topY + 6, 1, 1);
-    // 腮红
-    ctx.fillStyle = 'rgba(240,140,120,0.5)';
-    ctx.fillRect(hx + (d > 0 ? 1 : -2), topY + 8, 1, 1);
+  function drawHead(ctx, x, y, direction) {
+    ctx.globalAlpha = 1;  // 关键：重置透明度
+
+    // 轮廓（比头部大 2px，实色深棕）
+    ctx.fillStyle = '#3d2b1f';
+    ctx.fillRect(Math.floor(x - 1), Math.floor(y - 1), 14, 14);
+
+    // 内部填充（实色，不透明）
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(Math.floor(x), Math.floor(y), 12, 12);
+
+    // 阴影（下巴下方 1px）
+    ctx.fillStyle = SKIN_SHADOW;
+    ctx.fillRect(Math.floor(x), Math.floor(y + 10), 12, 2);
+
+    // 高光（额头左上方 1px）
+    ctx.fillStyle = SKIN_HIGHLIGHT;
+    ctx.fillRect(Math.floor(x + 2), Math.floor(y + 1), 2, 1);
+
+    // 头发（覆盖头顶，实色）
+    ctx.fillStyle = HAIR;
+    ctx.fillRect(Math.floor(x), Math.floor(y), 12, 4);
+    // 刘海细节
+    ctx.fillStyle = HAIR2;
+    ctx.fillRect(Math.floor(x + 1), Math.floor(y + 3), 2, 1);
+    ctx.fillRect(Math.floor(x + 6), Math.floor(y + 2), 3, 1);
+
+    // 眼睛（2px 深色 + 1px 白色高光）
+    ctx.fillStyle = '#1a1a1a';
+    if (direction >= 0) { // 朝右
+      ctx.fillRect(Math.floor(x + 7), Math.floor(y + 6), 2, 2);
+      ctx.fillRect(Math.floor(x + 3), Math.floor(y + 6), 2, 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(Math.floor(x + 8), Math.floor(y + 6), 1, 1);
+      ctx.fillRect(Math.floor(x + 4), Math.floor(y + 6), 1, 1);
+    } else { // 朝左
+      ctx.fillRect(Math.floor(x + 3), Math.floor(y + 6), 2, 2);
+      ctx.fillRect(Math.floor(x + 7), Math.floor(y + 6), 2, 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(Math.floor(x + 3), Math.floor(y + 6), 1, 1);
+      ctx.fillRect(Math.floor(x + 7), Math.floor(y + 6), 1, 1);
+    }
+
+    // 嘴巴（1px）
+    ctx.fillStyle = '#c47a5a';
+    ctx.fillRect(Math.floor(x + 5), Math.floor(y + 9), 2, 1);
   }
 
   function draw(ctx, st) {
@@ -216,7 +258,7 @@
     ctx.fillRect(hx + 3, 108, 2, 7);
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
     ctx.fillRect(hx - 5, 108, 1, 4);
-    drawHead(ctx, hx, 96, d);
+    drawHead(ctx, hx - 6, 95, d);
   }
 
   function drawWalk(ctx, hx, d, o, t) {
@@ -237,7 +279,7 @@
     ctx.fillRect(hx + 3 - l1, 107 - bob, 2, 7);
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
     ctx.fillRect(hx - 5 + l1, 107 - bob, 1, 4);
-    drawHead(ctx, hx, 95 - bob, d);
+    drawHead(ctx, hx - 6, 94 - bob, d);
   }
 
   function drawWork(ctx, hx, o, t) {
@@ -255,7 +297,7 @@
     const arm = Math.round(Math.sin(t * 9) * 0.8);
     ctx.fillRect(hx - 13, 108 + arm, 10, 2);
     ctx.fillRect(hx - 4, 110 - arm, 2, 7); // 后臂
-    drawHead(ctx, hx - 1, 96, -1);
+    drawHead(ctx, hx - 7, 95, -1);
     // 键盘敲击闪烁点
     if (screenMode !== 'slacking' && Math.floor(t * 8) % 2 === 0) {
       ctx.fillStyle = '#7ad8ff';
@@ -279,7 +321,7 @@
     // 筷子
     ctx.fillStyle = '#8a6a4a';
     ctx.fillRect(hx + 3, 100 + arm, 1, 5);
-    drawHead(ctx, hx + 1, 96, 1);
+    drawHead(ctx, hx - 5, 95, 1);
   }
 
   function drawLeisure(ctx, hx, o, t) {
@@ -299,7 +341,7 @@
     ctx.fillRect(hx + 5, 104, 2, 3);
     ctx.fillStyle = o.shirt;
     ctx.fillRect(hx + 2, 106, 2, 3);       // 拿手机的手
-    drawHead(ctx, hx - 1, 90, 1);
+    drawHead(ctx, hx - 7, 89, 1);
     // 手机光晕
     const glow = ctx.createRadialGradient(hx + 6, 106, 1, hx + 6, 106, 8);
     glow.addColorStop(0, 'rgba(122,216,255,0.22)');
@@ -327,7 +369,7 @@
     ctx.fillRect(hx + 3, 98 + arm, 1, 5); // 牙刷柄
     ctx.fillStyle = '#7ad8ff';
     ctx.fillRect(hx + 3, 97 + arm, 1, 2); // 泡沫
-    drawHead(ctx, hx + 1, 96, 1);
+    drawHead(ctx, hx - 5, 95, 1);
   }
 
   function drawDrink(ctx, hx, o, t) {
@@ -351,7 +393,7 @@
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.fillRect(hx + 4, 96 - s1, 1, 1);
     ctx.fillRect(hx + 5, 94 - ((s1 + 1) % 3), 1, 1);
-    drawHead(ctx, hx + 1, 96, 1);
+    drawHead(ctx, hx - 5, 95, 1);
   }
 
   function drawSleep(ctx, t) {
@@ -410,6 +452,10 @@
     screenMode: function () { return screenMode; },
     screenName: screenModeName,
     cycleScreen: cycleScreen,
-    isWork: function () { return char && char.pose === 'work'; }
+    isWork: function () { return char && char.pose === 'work'; },
+    sleepInfo: function () {
+      if (!char) return null;
+      return { sleeping: char.pose === 'sleep', startMin: char.sleepStartMin };
+    }
   };
 })();
