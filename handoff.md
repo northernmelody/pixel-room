@@ -170,4 +170,4 @@ GitHub 仓库：https://github.com/northernmelody/pixel-room
 | Commit | 说明 |
 | --- | --- |
 | cd73248 | 界面修复（肤色/头部/猫/屏幕条纹）+ 自动关灯 + 回滚小人尺寸 + 本交接文档 |
-| （见 git log，本轮提交） | 回滚猫尺寸 + 锁定橘猫配色 + 交接文档更新 |
+| fb522ff | 回滚猫尺寸 + 锁定橘猫配色 + 交接文档更新 |
