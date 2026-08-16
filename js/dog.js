@@ -39,8 +39,11 @@
   function init() {
     const saved = P.Storage.state;
     const seed = (saved.dogSeed !== undefined && saved.dogSeed !== null) ? saved.dogSeed : 0;
+    // 每次打开页面随机起始位置（房间常见落脚点，避免出生在家具里）
+    const spots = [24 + Math.random() * 30, 120 + Math.random() * 30, 250 + Math.random() * 30];
+    const sx = Math.max(12, Math.min(W - 12, spots[(Math.random() * spots.length) | 0]));
     dog = {
-      x: DOG_BED_X, dir: -1,
+      x: sx, dir: Math.random() < 0.5 ? -1 : 1,
       state: STATE.IDLE, stateT: 0, dur: 1,
       animT: Math.random() * 10,
       target: null,

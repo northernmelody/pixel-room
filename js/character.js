@@ -56,7 +56,7 @@
     const washPhase = tp.hour >= 22 ? 'shower' : 'brush';
     let t;
     if (act === 'wash') t = targetFor(act, washPhase);
-    else if (isMeal(act)) t = { room: 3, x: 277, pose: 'fridge' };
+    else if (isMeal(act)) t = { room: 3, x: 262, pose: 'fridge' };
     else t = targetFor(act, washPhase);
     char = {
       x: t.x, room: t.room, dir: t.pose === 'work' ? -1 : 1,
@@ -154,7 +154,9 @@
         char.washSeq = null;
         char.fridgePhase = 'go';
         char.fridgeT = 0;
-        char.target = { room: 3, x: 277, pose: 'fridge' };
+        // 站在冰箱左侧（x=262，与喝水点同位），面朝冰箱 → 开门时整个内腔可见，
+        // 不会被小人身体挡住（旧站位 x=277 正对门缝，开门的内部几乎被完全遮住）
+        char.target = { room: 3, x: 262, pose: 'fridge' };
       } else {
         char.washSeq = null;
         char.fridgePhase = null;
@@ -595,15 +597,15 @@
     drawHead(ctx, hx - 5, 95, 1);
   }
 
-  // 站在冰箱前取食材（面朝左）
+  // 站在冰箱左侧取食材（面朝右，手臂伸向冰箱门开口）
   function drawFridge(ctx, hx, o, t) {
     drawStandBody(ctx, hx, o);
-    // 伸向冰箱门的手臂
+    // 伸向冰箱门的手臂（从 x=hx+3 伸到开口左缘，手搭在门边）
     ctx.fillStyle = o.shirt;
-    ctx.fillRect(hx - 5, 100, 2, 9);
+    ctx.fillRect(hx + 3, 100, 4, 9);
     ctx.fillStyle = SKIN;
-    ctx.fillRect(hx - 6, 99, 2, 2);
-    drawHead(ctx, hx - 6, 95, -1);
+    ctx.fillRect(hx + 7, 99, 2, 2);
+    drawHead(ctx, hx - 6, 95, 1);
   }
 
   // 坐马桶腿（坐面已降低，腿自然弯曲）

@@ -29,8 +29,11 @@
   let cat = null;
 
   function init() {
+    // 每次打开页面随机起始位置（卧室/工作区/厨房常见落脚点，避免出生在家具里）
+    const spots = [30 + Math.random() * 24, 120 + Math.random() * 30, 250 + Math.random() * 24];
+    const sx = Math.max(8, Math.min(W - 8, spots[(Math.random() * spots.length) | 0]));
     cat = {
-      x: 60, dir: -1, palette: PALETTES[0],
+      x: sx, dir: Math.random() < 0.5 ? -1 : 1, palette: PALETTES[0],
       state: 'idle', stateT: 0, dur: 2,
       animT: Math.random() * 10,
       moodT: 0, target: null,
