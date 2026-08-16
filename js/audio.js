@@ -235,7 +235,26 @@
     keyboard: function () { noiseBurst(0.015, 0.03, 3000); },
     footstep: function () { noiseBurst(0.05, 0.02, 500); },
     thunder: function () { noiseBurst(2.2, 0.2, 160); },
-    eat: function () { noiseBurst(0.03, 0.05, 600); }
+    eat: function () { noiseBurst(0.03, 0.05, 600); },
+    flush: function () {
+      if (!actx || !enabled || !master) return;
+      const t0 = actx.currentTime;
+      // 水声（噪声爆发）
+      noiseBurst(0.5, 0.16, 900);
+      // 下冲音（漩涡感）
+      const o = actx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(300, t0);
+      o.frequency.exponentialRampToValueAtTime(140, t0 + 0.5);
+      const f = actx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 600; f.Q.value = 2;
+      const g = actx.createGain();
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(0.06, t0 + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.6);
+      o.connect(f); f.connect(g); g.connect(master);
+      o.start(t0); o.stop(t0 + 0.7);
+      // 漩涡尾音
+      setTimeout(function () { if (actx && enabled) noiseBurst(0.4, 0.08, 500); }, 180);
+    }
   };
 
   P.Events.on('weather-change', function () { P.Audio.updateAmbient(); });

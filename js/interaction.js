@@ -12,6 +12,10 @@
   let computerMode = null;
   let compCtx = null;
 
+  // 快速开关灯检测（5 秒滑动窗口 + 30 秒冷却）
+  let toggleTimes = [];
+  let lastScareAt = 0;
+
   function init(canvasEl) {
     canvas = canvasEl;
     canvas.addEventListener('click', onClick);
@@ -70,6 +74,13 @@
         return;
       }
     }
+    // 小人（当前所在位置 ±15px；灯/猫判定优先，避免挡住台灯开关）
+    const ch = P.Character.pos();
+    if (Math.abs(p.x - ch.x) <= 15 && p.y >= FLOOR - 38 && p.y <= FLOOR + 2) {
+      P.Character.reactRandom();
+      if (P.Audio) P.Audio.ui();
+      return;
+    }
   }
 
   function toggleLamp(r) {
@@ -82,6 +93,18 @@
     const lampOn = r.lamp === 'ceiling' ? st.lamps.ceiling[r.room] : st.lamps[r.lamp];
     if (P.UI) P.UI.toast('💡 灯已' + (lampOn ? '开' : '关'));
     P.Events.emit('lamp-toggle', { lamp: r.lamp, room: r.room });
+
+    // 快速开关灯：5 秒内开关 3 次以上 → 猫被吓跑，小人抬头看一眼（30 秒冷却）
+    const now = Date.now();
+    toggleTimes = toggleTimes.filter(function (ts) { return now - ts < 5000; });
+    toggleTimes.push(now);
+    if (toggleTimes.length >= 3 && now - lastScareAt > 30000) {
+      lastScareAt = now;
+      toggleTimes = [];
+      if (P.Cat) P.Cat.frightened();
+      if (P.Character) P.Character.react('lookup');
+      if (P.UI) P.UI.toast('💡 灯闪太快，猫咪吓跑了！');
+    }
   }
 
   function openComputer() {

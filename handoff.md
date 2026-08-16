@@ -222,3 +222,90 @@ GitHub 仓库：https://github.com/northernmelody/pixel-room
   - 极小屏（室内 16×18 显示器）：只画 2×2 在线绿点（`#4ae07a`），气泡布局保持不变。
 - 验证：放大屏 getImageData 采样确认底色/边框/M·O 字形像素正确；室内小屏绿点+气泡正常
   （颜色受屏幕冷光叠加影响）；截图 `_shots/chat-momo-modal.png` / `chat-momo-scene.png`。
+
+## 11. 功能迭代任务（2026-08：冰箱/餐桌/厕所/猫行为/连锁交互/物品动态变化）
+
+> 任务目标：不新增系统，只完善已有元素的行为细节；保持现有架构/视觉/性能方案。
+> 涉及文件：js/character.js、js/roomLayout.js、js/cat.js、js/interaction.js、js/storage.js、
+> js/main.js、js/audio.js、js/renderer.js（无新增文件，无外部素材）。
+
+### 11.1 冰箱与餐桌食物（js/character.js / js/roomLayout.js）
+- 餐前取食材：每餐（早/午/晚）开始后，小人先走到冰箱前（x=277）→ 冰箱门开（约 2.2s，含开/关
+  各 0.35s 过渡）→ 关门 → 上桌吃饭。`char.fridgePhase`：go→open→done。
+- 冰箱门：`drawFridgeDoorDynamic()`（动态层）打开时绘制内部（层板 + 牛奶/蔬菜/果汁/鸡蛋/番茄/
+  面包/冰格色块），门以宽度收缩模拟平开；冷气白雾 4 个白色像素从开口向上飘散（`fridgeOpen()` 暴露开度）。
+- 餐桌食物：`drawMealFood()`（动态层）按 `P.Character.mealFood()` 绘制，出现即消失无端菜动作；
+  食物随机——早餐 包子/面包/面条/鸡蛋，午餐 米饭炒菜/外卖盒/泡面，晚餐 面条/火锅/外卖；
+  食物热气 3 个白色像素上升。盘子静态加宽到 9px，原静态米饭绘制移除。
+
+### 11.2 厕所使用动画 + 马桶高度（js/character.js / js/roomLayout.js）
+- 马桶坐面降到 y=114（原 106），小人坐下腿自然弯曲（大腿前伸 y113-117 + 小腿垂下 117-128）。
+- 早晨洗漱流程（washPhase='brush' 时，`washSeq` 0-5）：到马桶前(x=215) → 坐下(4-6.5s) →
+  冲水(1.3s，`P.Audio.flush()` 水声 + 水箱水花像素 + 按钮闪光) → 走去洗手台(x=186) →
+  洗手(4.5s：水柱→搓洗→关水→毛巾) → 刷牙(原有)。晚上 22:00 仍为淋浴（不变）。
+- 洗手水柱画在头部右侧（x=hx+9），避免被头遮挡；搓洗手部像素交替 + 泡泡；关水后毛巾擦手。
+- 新姿势：fridge / toilet / flush / handwash；`drawToiletLegs()` 共享坐姿腿（裤子上半部下移：
+  大腿根露内裤边 + 裤脚堆脚踝）。
+
+### 11.3 猫行为扩展（js/cat.js / js/roomLayout.js）
+- 新增攀爬点 `CLIMB_POINTS`（x=站立位，y=支撑面）：餐桌(262,110)、冰箱顶(274,86)、工作区桌面
+  (122,108)、衣柜顶(8,56)、厨房吊柜顶(288,56)。状态机：climb（走到目标→跳上，0.38s 插值+弧线+
+  落地 squash）→ perch（停留 durMin~durMax，餐桌 10-30s / 冰箱顶 20-60s / 桌面 5-20s / 柜顶 20-60s）
+  → jumpdown（跳下）。
+- 特殊行为：underbed（床下 x=20，只画尾巴+后爪，15-45s，crawlout 爬出）、scratch（窗帘 x=52 原地
+  抓挠 5-15s，前爪+抓痕像素）、eat（猫粮碗 x=307，低头 2.5-4.5s，每次 `items.bowl--`，空碗不再去吃）。
+- 猫粮碗：厨房角落 (305,124,5,3) 静态绘制，余粮 3 级递减；猫进食时碗重绘在猫身前保证可见。
+- 上桌蹭饭：小人吃饭时 climb 权重 +10 且优先选餐桌；桌面停留时键盘猫爪 + 咖啡杯被推歪 1px + 泼溅
+  （`drawDeskCatEffects` / `drawCoffeeCup` 读 `P.Cat.perchId()`，并入缓存签名）。
+- 通用支撑面：猫新增 `c.y`（站立面高），绘制/影子/跳跃插值均基于它；移除旧 onDesk/deskY。
+
+### 11.4 连锁交互（js/interaction.js / js/cat.js / js/character.js）
+- 连续摸猫（`pet()` 3s 窗口计数）：第 1 次抬头喵 → 第 2 次蹭手（purr+爱心）→ 第 3 次翻肚皮
+  （`drawBelly` 肚皮朝上）→ 第 4 次伸爪"够了"后起身走开（walkaway）；间隔超 3s 归零。
+- 快速开关灯：`toggleLamp()` 内 5s 滑动窗口计数 ≥3 次且距上次惊吓 >30s → `P.Cat.frightened()`
+  （跑向最近隐蔽点：床下/衣柜顶/吊柜顶，速度 26）+ `P.Character.react('lookup')` 抬头看一眼。
+- 点击小人：判定区 当前位 ±15px × y∈[90,130]（猫/灯判定优先，避免挡住台灯开关）；随机 4 种反应
+  挥手/点头/发呆惊醒（抖动+感叹号）/回头看，1.2-1.8s 冻结当前活动，结束后继续原状态；
+  睡觉/淋浴中不反应。
+
+### 11.5 物品动态变化（js/storage.js / js/roomLayout.js / js/main.js）
+- 状态存 `P.Storage.state.items`，按 `items.date` 记录，跨天自动更新；主循环每帧
+  `ensureDaily()`（跨天：猫粮续满 3、快递箱每日 29% 出现/1-3 天后拆开）+
+  `syncItems()`（按当前时刻刷新 咖啡杯/被子/水槽碗，仅在变化时 save）。
+- 咖啡杯（工作区桌面 132,105,3,4）：8.5 满杯 → 上午 4→2 → 下午 2→0（17.5 见底）→ 晚间洗漱洗掉
+  → 次日重新满杯；液面 0-3px 深棕像素，高度 = round(cup/4*3)。
+- 被子（床）：睡觉 22.5-7.5 平整盖身(cover) / 睡前 21.5-22.5 整齐叠床尾(made) / 白天乱糟糟
+  堆床尾+歪斜+垂落(messy)。
+- 猫粮碗：猫每次吃 -1，空碗保持，次日自动续满。
+- 快递箱（门口 x=310,118,7,7）：纸箱+胶带+面单；拆开后小物件随机出现在预设点
+  （书架摆件/厨房杯子/卧室挂画/桌面盆栽/卫生间花瓶），箱消失。
+- 水槽碗：8.5（早餐后）出现于厨房水槽，22:00 洗漱洗掉。
+- 离屏缓存：`renderer.js staticSignature()` 追加 items 各字段 + mealFood + catPerch，
+  状态变化自动重建（已验证 bowl/blanket/pkg 变化触发签名更新）。
+
+### 11.6 顺手修复：存档引用 bug（js/storage.js）
+- 原代码 `P.Storage.state = state` 在对象字面量创建时捕获引用，`load()` 内 `state = merge(...)`
+  重赋值后外部 `P.Storage.state` 仍指向旧对象 → 刷新页面后读到的存档是默认值（影响全部存档项）。
+- 修复：`load()` / `reset()` 内合并/重置后同步 `P.Storage.state = state`。
+- 验证：写入 bowl=1 + pkg arrived 后刷新，状态原样恢复。
+
+### 11.7 验证摘要（agent-browser 无头 + canvas 像素采样）
+| 项目 | 结果 |
+| --- | --- |
+| 冰箱门开合 | fridgePhase open 时 `fridgeOpen().p` 0→1→0；内部层板+食物色块、门上白雾像素(78-82 行)可见 |
+| 餐桌食物 | 早餐 noodles / 午餐 rice / 晚餐 noodles 均随机出现，盘上有食物+热气；吃完消失 |
+| 厕所流程 | 07:40 实测 toilet(4.5s)→flush(1.3s)→handwash(4.5s)→brush；水柱蓝像素 [111,152,183] 水开时出现 |
+| 猫攀爬 | perch fridge(y=86) 20-60s / perch wardrobe(y=56)；climb 行走→跳→落地；scratch(窗帘 x=52) 触发 |
+| 猫吃粮 | eat 走到 x=307，bowl 3→2→1；空碗不触发 eat；次日 ensureDaily 续满 |
+| 连续摸猫 | 4 连点 petLevel 1→2→3→4，末态 walkaway；间隔 >3s 归零（l2=1） |
+| 快速开关灯 | 3 次点击（5s 内）→ catState=flee + charReact lookup |
+| 点击小人 | 点击 (147,122) → react wave 1.2s 后清除 |
+| 物品持久化 | 设置 bowl=1+pkg arrived 刷新后原样恢复；杯子/被子/水槽碗按时刻刷新 |
+| 缓存签名 | items 变化（bowl 3→0、pkg none→arrived→opened）触发签名变化并重建 |
+| 控制台 | 全程无报错；`node --check` 14 个 JS 全部通过 |
+- 截图：`_shots/feat-breakfast-0805.png` / `feat-fridge-open.png` / `feat-dinner-1830.png` / `feat-toilet-flush.png`
+
+### 11.8 提交记录（本轮）
+| Commit | 说明 |
+| --- | --- |
+| （待提交） | feat: 功能迭代（冰箱/餐桌/厕所/猫行为/连锁交互/物品动态变化）+ 存档引用修复 + 交接文档 |

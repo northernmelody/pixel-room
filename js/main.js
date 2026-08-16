@@ -25,6 +25,7 @@
 
   function init() {
     P.Storage.load();
+    if (P.Storage.ensureDaily) P.Storage.ensureDaily(); // 跨天更新（猫粮续满/快递箱）
     if (P.Lighting && P.Lighting.initDailyRandom) P.Lighting.initDailyRandom();
     const canvas = document.getElementById('scene');
     if (!canvas) return;
@@ -51,6 +52,8 @@
     last = now;
 
     // ---- 更新 ----
+    if (P.Storage && P.Storage.ensureDaily) P.Storage.ensureDaily(); // 检测跨天
+    if (P.Storage && P.Storage.syncItems) P.Storage.syncItems();     // 时变物品状态
     P.Character.update(dt);
     if (P.Lighting && P.Lighting.checkAutoLights) P.Lighting.checkAutoLights();
     P.Cat.update(dt);

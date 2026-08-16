@@ -67,6 +67,8 @@
       sink: { x: 298, y: 100, w: 10, h: 6 },
       plant: { x: 312, y: 92, w: 7, h: 16 },
       meal: { x: 250, y: 104, w: 7, h: 6 },
+      bowlSpot: { x: 305, y: 124, w: 5, h: 3 },   // 猫粮碗（厨房角落地面）
+      pkgSpot: { x: 310, y: 118, w: 7, h: 7 },    // 快递箱（门口/墙边）
       ceilingLamp: { x: 280 }
     }
   };
@@ -185,15 +187,19 @@
     drawMidFurniture(ctx, st);       // z=1 靠墙家具
     drawForeFurniture(ctx, st);      // z=2 前景家具
     drawSeasonItemsStatic(ctx, st);  // 季节小物件（静态部分）
+    drawItemObjects(ctx, st);        // 动态物品（猫粮碗/快递箱/拆出物件）
   }
 
-  // 每帧动态内容：窗内天空/中梃/反光、屏幕内容、蒸汽/水珠、风扇、吊灯
+  // 每帧动态内容：窗内天空/中梃/反光、屏幕内容、蒸汽/水珠、风扇、吊灯、餐桌食物、冰箱门、猫桌面效果
   function drawDynamic(ctx, st, t) {
     drawWindowsDynamic(ctx, st);
     drawMonitorDynamic(ctx, st, t);
     drawSteamDrops(ctx, st, t);
+    drawMealFood(ctx, st, t);
     drawSeasonItemsDynamic(ctx, st, t);
     drawCeilingLamps(ctx, st);
+    drawFridgeDoorDynamic(ctx, st, t);
+    drawDeskCatEffects(ctx, st, t);
   }
 
   // ============================================================
@@ -788,6 +794,12 @@
     // 出水嘴
     px(ctx, R.x + 4, 93, 3, 1, C.COLORS.metalMid);
     px(ctx, R.x + 5, 93, 1, 1, '#ffffff');
+    // 水槽里的碗（饭后出现，下次洗漱时洗掉）
+    if ((P.Storage.state.items || {}).dishes) {
+      px(ctx, R.x + 3, 103, 3, 2, '#f0ead8');
+      px(ctx, R.x + 3, 103, 3, 1, '#ffffff');
+      px(ctx, R.x + 4, 105, 1, 1, 'rgba(0,0,0,0.3)');
+    }
   }
 
   function drawFridge(ctx, st) {
@@ -868,22 +880,24 @@
   function drawToilet(ctx, st) {
     const R = FURN.bathroom.toilet;
     groundShadow(ctx, R.x - 1, R.y + R.h - 1, R.w + 2, 3);
-    // 水箱
-    px(ctx, R.x + 2, R.y, R.w - 2, 8, '#e8e8ec');
-    px(ctx, R.x + 2, R.y, R.w - 2, 1, '#ffffff');
-    px(ctx, R.x + 2, R.y + 1, 1, 7, 'rgba(0,0,0,0.12)');
-    px(ctx, R.x + R.w - 3, R.y + 1, 1, 7, 'rgba(0,0,0,0.08)');
+    // 水箱（上）
+    px(ctx, R.x + 2, R.y - 2, R.w - 2, 8, '#e8e8ec');
+    px(ctx, R.x + 2, R.y - 2, R.w - 2, 1, '#ffffff');
+    px(ctx, R.x + 2, R.y - 1, 1, 7, 'rgba(0,0,0,0.12)');
+    px(ctx, R.x + R.w - 3, R.y - 1, 1, 7, 'rgba(0,0,0,0.08)');
     // 冲水钮
-    px(ctx, R.x + 6, R.y + 2, 2, 1, '#c8c8d0');
-    // 坐垫 + 桶身
-    px(ctx, R.x, R.y + 8, R.w, 5, '#f4f4f8');
-    px(ctx, R.x, R.y + 8, R.w, 1, '#ffffff');
-    px(ctx, R.x + 1, R.y + 13, R.w - 2, 17, '#d8d8e0');
-    px(ctx, R.x + 1, R.y + 13, 2, 17, '#e8e8f0');
-    px(ctx, R.x + R.w - 3, R.y + 13, 2, 17, '#c8c8d0');
+    px(ctx, R.x + 6, R.y, 2, 1, '#c8c8d0');
+    // 坐面（降低到小人膝盖以下：y=114，坐下腿可自然弯曲）
+    px(ctx, R.x, 114, R.w, 4, '#f4f4f8');
+    px(ctx, R.x, 114, R.w, 1, '#ffffff');
+    px(ctx, R.x + 1, 117, R.w - 2, 1, 'rgba(0,0,0,0.10)');
+    // 桶身（喇叭形，落至地面）
+    px(ctx, R.x + 1, 118, R.w - 2, 10, '#d8d8e0');
+    px(ctx, R.x + 1, 118, 2, 10, '#e8e8f0');
+    px(ctx, R.x + R.w - 3, 118, 2, 10, '#c8c8d0');
     // 底座
-    px(ctx, R.x, R.y + R.h - 2, R.w, 2, '#c0c0cc');
-    px(ctx, R.x + 4, R.y + 2, 1, 1, '#c0c0cc');
+    px(ctx, R.x, 126, R.w, 2, '#c0c0cc');
+    px(ctx, R.x + 4, 120, 1, 1, '#c0c0cc');
   }
 
   function drawShower(ctx, st) {
@@ -963,19 +977,46 @@
     px(ctx, R.pillow.x, R.pillow.y, R.pillow.w, 1, '#fffdf6');
     px(ctx, R.pillow.x, R.pillow.y + R.pillow.h - 1, R.pillow.w, 1, '#d8d0c4');
     px(ctx, R.pillow.x, R.pillow.y + 2, 1, 4, '#e8e2d8');
-    // 被子（隆起 + 明暗面）
-    px(ctx, R.blanket.x, R.blanket.y, R.blanket.w, R.blanket.h, '#5a8fc8');
-    px(ctx, R.blanket.x, R.blanket.y, R.blanket.w, 2, '#6fa3d8');
-    px(ctx, R.blanket.x, R.blanket.y, R.blanket.w, 1, '#7db1e0');
-    px(ctx, R.blanket.x, R.blanket.y + R.blanket.h - 1, R.blanket.w, 1, '#4a78a8');
-    // 被子花纹 + 折痕
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    for (let i = 0; i < 4; i++) ctx.fillRect(R.blanket.x + 4 + i * 6, R.blanket.y + 3, 3, 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.18)';
-    for (let i = 0; i < 4; i++) ctx.fillRect(R.blanket.x + 5 + i * 6, R.blanket.y + 5, 1, R.blanket.h - 5);
+    // 被子（随状态变化：睡觉盖身 / 睡前铺好 / 白天乱糟糟）
+    drawBlanketMode(ctx, R, st);
     // 床腿（前后层次）
     px(ctx, R.bed.x + 1, R.bed.y + 16, 2, 2, C.COLORS.woodDarkest);
     px(ctx, R.bed.x + R.bed.w - 3, R.bed.y + 16, 2, 2, C.COLORS.woodDarkest);
+  }
+
+  // 被子三种形态（状态存于 P.Storage.state.items.blanket）
+  function drawBlanketMode(ctx, R, st) {
+    const mode = (P.Storage.state.items || {}).blanket || 'cover';
+    const b = R.blanket; // (17,112,27,8)
+    if (mode === 'cover') {
+      // 睡觉：平整盖在身上
+      px(ctx, b.x, b.y, b.w, b.h, '#5a8fc8');
+      px(ctx, b.x, b.y, b.w, 2, '#6fa3d8');
+      px(ctx, b.x, b.y, b.w, 1, '#7db1e0');
+      px(ctx, b.x, b.y + b.h - 1, b.w, 1, '#4a78a8');
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      for (let i = 0; i < 4; i++) ctx.fillRect(b.x + 4 + i * 6, b.y + 3, 3, 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      for (let i = 0; i < 4; i++) ctx.fillRect(b.x + 5 + i * 6, b.y + 5, 1, b.h - 5);
+    } else if (mode === 'made') {
+      // 睡前铺好：整齐叠在床尾
+      px(ctx, 31, 112, 13, 8, '#5a8fc8');
+      px(ctx, 31, 112, 13, 1, '#7db1e0');
+      px(ctx, 31, 116, 13, 1, '#4a78a8');
+      px(ctx, 31, 119, 13, 1, '#4a78a8');
+      px(ctx, 31, 112, 1, 8, '#4a78a8');
+      px(ctx, 43, 112, 1, 8, '#6fa3d8');
+    } else {
+      // 白天：乱糟糟堆在床尾 + 歪斜 + 垂落
+      px(ctx, 27, 113, 17, 7, '#5a8fc8');
+      px(ctx, 29, 111, 11, 4, '#6fa3d8');
+      px(ctx, 35, 112, 9, 5, '#5584b8');
+      px(ctx, 39, 117, 5, 3, '#6fa3d8');
+      px(ctx, 30, 115, 14, 1, '#4a78a8');
+      px(ctx, 33, 113, 1, 7, '#4a78a8');
+      px(ctx, 37, 114, 1, 6, '#4a78a8');
+      px(ctx, 41, 116, 1, 4, '#4a78a8');
+    }
   }
 
   function drawNightstand(ctx, st) {
@@ -1025,11 +1066,8 @@
     px(ctx, R.keyboard.x, R.keyboard.y, R.keyboard.w, R.keyboard.h, '#3a3a46');
     for (let i = 0; i < 6; i++) px(ctx, R.keyboard.x + 2 + i * 2, R.keyboard.y, 1, 1, '#55555f');
     px(ctx, R.keyboard.x, R.keyboard.y + R.keyboard.h, R.keyboard.w, 1, '#2a2a34');
-    // 马克杯（高光）
-    px(ctx, R.mug.x, R.mug.y, R.mug.w, R.mug.h, '#e06060');
-    px(ctx, R.mug.x, R.mug.y, R.mug.w, 1, '#f08080');
-    px(ctx, R.mug.x, R.mug.y + 1, 1, R.mug.h - 1, '#f0a0a0');
-    px(ctx, R.mug.x + 2, R.mug.y + R.mug.h - 1, 1, 1, '#c04040');
+    // 咖啡杯（液面随状态变化；猫在桌面时被推歪）
+    drawCoffeeCup(ctx, st);
     // 台灯
     const dlOn = lampOnF('deskLamp');
     px(ctx, R.deskLamp.x + 3, R.deskLamp.y + 11, 1, 6, '#3a3a46');
@@ -1062,6 +1100,29 @@
     // 屏幕凹槽（动态内容绘制其上）
     px(ctx, R.x + 1, R.y + 2, R.w - 2, R.h - 6, '#0d1017');
     px(ctx, R.x + 1, R.y + 2, R.w - 2, 1, '#1a1d28');
+  }
+
+  // 咖啡杯：液面高度随存档状态变化（猫在桌面时被推歪 + 咖啡泼溅）
+  function drawCoffeeCup(ctx, st) {
+    const R = FURN.workspace;
+    const it = P.Storage.state.items || {};
+    const cupLvl = it.cup != null ? it.cup : 4;
+    const perch = P.Cat.perchId ? P.Cat.perchId() : null;
+    const pushed = perch === 'desk';
+    const cx = R.mug.x + (pushed ? 1 : 0);
+    // 杯身
+    px(ctx, cx, R.mug.y, R.mug.w, R.mug.h, '#e06060');
+    px(ctx, cx, R.mug.y, R.mug.w, 1, '#f08080');
+    px(ctx, cx, R.mug.y + 1, 1, R.mug.h - 1, '#f0a0a0');
+    // 咖啡液面（高度 0-3px）
+    const fillH = Math.round((cupLvl / 4) * 3);
+    if (fillH > 0) {
+      px(ctx, cx + 1, R.mug.y + R.mug.h - fillH, R.mug.w - 2, fillH, '#4a2a1a');
+      px(ctx, cx + 1, R.mug.y + R.mug.h - fillH, R.mug.w - 2, 1, '#6a4030');
+    }
+    // 杯把
+    px(ctx, cx + 2, R.mug.y + R.mug.h - 1, 1, 1, '#c04040');
+    px(ctx, cx + 3, R.mug.y + R.mug.h - 2, 1, 1, '#e08080');
   }
 
   function drawChair(ctx, st) {
@@ -1100,18 +1161,11 @@
     groundShadow(ctx, R.stoolB.x - 1, R.stoolB.y + 11, R.stoolB.w + 2, 2);
     px(ctx, R.stoolB.x, R.stoolB.y, R.stoolB.w, 2, C.COLORS.woodLight);
     px(ctx, R.stoolB.x + 1, R.stoolB.y + 2, 2, 10, C.COLORS.woodDark);
-    // 餐盘（静态），蒸汽动态
-    const eating = st.activity && (st.activity.id === 'breakfast' || st.activity.id === 'lunch' || st.activity.id === 'dinner');
-    px(ctx, R.meal.x, R.meal.y + 2, R.meal.w, 2, '#e8e8ec');
-    px(ctx, R.meal.x, R.meal.y + 2, R.meal.w, 1, '#f8f8fc');
-    px(ctx, R.meal.x + 1, R.meal.y + 3, R.meal.w - 2, 1, 'rgba(0,0,0,0.12)');
-    if (eating) {
-      px(ctx, R.meal.x + 1, R.meal.y, R.meal.w - 2, 2, '#f4e8d0'); // 米饭
-      px(ctx, R.meal.x + 2, R.meal.y - 1, 2, 1, '#e0b060');        // 菜
-      px(ctx, R.meal.x + 5, R.meal.y - 3, 1, 3, '#8a6a4a');        // 筷子
-    } else {
-      px(ctx, R.meal.x + 1, R.meal.y + 1, 2, 1, '#ffffff'); // 空盘
-    }
+    // 餐盘（静态底），食物与蒸汽动态绘制
+    px(ctx, R.meal.x, R.meal.y + 2, R.meal.w + 2, 2, '#e8e8ec');
+    px(ctx, R.meal.x, R.meal.y + 2, R.meal.w + 2, 1, '#f8f8fc');
+    px(ctx, R.meal.x + 1, R.meal.y + 3, R.meal.w, 1, 'rgba(0,0,0,0.12)');
+    px(ctx, R.meal.x + 1, R.meal.y + 1, 2, 1, '#ffffff'); // 空盘高光
   }
 
   // 花盆
@@ -1228,15 +1282,6 @@
   }
 
   function drawSteamDrops(ctx, st, t) {
-    // 厨房饭菜蒸汽
-    const eating = st.activity && (st.activity.id === 'breakfast' || st.activity.id === 'lunch' || st.activity.id === 'dinner');
-    if (eating) {
-      const m = FURN.kitchen.meal;
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      const s1 = Math.floor(t * 2.5) % 3;
-      ctx.fillRect(m.x + 3, m.y - 4 - s1, 1, 1);
-      ctx.fillRect(m.x + 5, m.y - 5 - ((s1 + 1) % 3), 1, 1);
-    }
     // 淋浴水珠
     if (st.activity && st.activity.id === 'wash' && st.washPhase === 'shower') {
       const R = FURN.bathroom.shower;
@@ -1431,6 +1476,217 @@
 
   // 供内部使用的 lampOn（避免与模块导出对象冲突）
   function lampOnF(kind) { return lampOn(kind); }
+
+  // ============================================================
+  // 动态物品（状态存于 P.Storage.state.items，跨天保持）
+  // ============================================================
+
+  // 猫粮碗（厨房角落地面；余粮随猫进食减少，次日续满）
+  function drawCatBowl(ctx, st) {
+    const it = P.Storage.state.items || {};
+    const B = FURN.kitchen.bowlSpot; // (305,124,5,3)
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(B.x - 1, B.y + 3, B.w + 2, 1);
+    // 碗
+    px(ctx, B.x, B.y, B.w, 2, '#e8e2d8');
+    px(ctx, B.x, B.y, B.w, 1, '#fdfaf2');
+    px(ctx, B.x + 1, B.y + 2, B.w - 2, 2, '#b8b0a0');
+    px(ctx, B.x, B.y + 3, B.w, 1, '#8a8272');
+    // 猫粮（3=满 2=半 1=少 0=空）
+    const food = it.bowl || 0;
+    if (food >= 1) {
+      px(ctx, B.x + 1, B.y - 1, 3, 1, '#c89050');
+      if (food >= 2) {
+        px(ctx, B.x + 1, B.y - 2, 3, 1, '#d8a060');
+        if (food >= 3) {
+          px(ctx, B.x, B.y - 2, 5, 1, '#e0b070');
+          px(ctx, B.x + 2, B.y - 3, 1, 1, '#a06828');
+        }
+      }
+    }
+  }
+
+  // 快递箱（门口/墙边；几天后被拆开消失）
+  function drawPackage(ctx, st) {
+    const pkg = (P.Storage.state.items || {}).pkg || {};
+    if (pkg.state !== 'arrived') return;
+    const B = FURN.kitchen.pkgSpot; // (310,118,7,7)
+    ctx.fillStyle = 'rgba(0,0,0,0.20)';
+    ctx.fillRect(B.x - 1, B.y + 8, B.w + 2, 2);
+    // 纸箱
+    px(ctx, B.x, B.y, B.w, B.h, '#c89a5a');
+    px(ctx, B.x, B.y, B.w, 1, '#e0b878');
+    px(ctx, B.x, B.y, 1, B.h, '#a87848');
+    px(ctx, B.x, B.y + 2, B.w, 1, '#a87848');
+    // 胶带
+    px(ctx, B.x + 1, B.y, 1, B.h, '#e8d8a8');
+    px(ctx, B.x, B.y + 3, B.w, 1, '#e8d8a8');
+    // 面单
+    px(ctx, B.x + 3, B.y + 4, 2, 2, '#f8f0e0');
+    px(ctx, B.x + 3, B.y + 4, 2, 1, '#d8d0c0');
+  }
+
+  // 快递拆出的小物件（从预设列表随机，出现在房间各处）
+  const PKG_ITEMS = {
+    figurine: function (ctx) { // 书架摆件：金色小雕像
+      px(ctx, 95, 54, 2, 3, '#e0b060');
+      px(ctx, 96, 53, 1, 1, '#f0d080');
+      px(ctx, 94, 57, 5, 1, 'rgba(0,0,0,0.2)');
+    },
+    mug: function (ctx) { // 厨房杯子：台面彩色杯
+      px(ctx, 308, 102, 3, 3, '#5ac8e8');
+      px(ctx, 308, 102, 3, 1, '#8adcf0');
+      px(ctx, 311, 103, 1, 1, '#e8f8fc');
+    },
+    painting: function (ctx) { // 卧室挂画
+      px(ctx, 42, 61, 5, 6, '#7a5c40');
+      px(ctx, 43, 62, 3, 4, '#4a7bd0');
+      px(ctx, 44, 63, 1, 1, '#ffffff');
+      px(ctx, 43, 62, 3, 1, '#7aa8e8');
+    },
+    plant: function (ctx) { // 工作区桌面小盆栽
+      px(ctx, 126, 103, 3, 4, '#8a4423');
+      px(ctx, 127, 100, 2, 3, '#4a9a4a');
+      px(ctx, 126, 101, 1, 2, '#5aac5a');
+    },
+    vase: function (ctx) { // 卫生间柜上花瓶
+      px(ctx, 230, 52, 2, 4, '#c86ab0');
+      px(ctx, 230, 52, 2, 1, '#e88ac8');
+      px(ctx, 231, 50, 1, 2, '#4a9a4a');
+    }
+  };
+
+  function drawOpenedItem(ctx, st) {
+    const pkg = (P.Storage.state.items || {}).pkg || {};
+    if (pkg.state !== 'opened' || !pkg.item) return;
+    const fn = PKG_ITEMS[pkg.item];
+    if (fn) fn(ctx);
+  }
+
+  function drawItemObjects(ctx, st) {
+    drawCatBowl(ctx, st);
+    drawPackage(ctx, st);
+    drawOpenedItem(ctx, st);
+  }
+
+  // 餐桌食物（小人吃饭时出现，吃完消失；食物随机 + 热气）
+  function drawMealFood(ctx, st, t) {
+    const mf = P.Character.mealFood ? P.Character.mealFood() : null;
+    if (!mf) return;
+    const m = FURN.kitchen.meal;
+    const bx = m.x + 2, by = m.y;
+    const type = mf.type;
+    if (type === 'baozi') {
+      // 包子
+      px(ctx, bx + 1, by - 3, 3, 3, '#fdf8f0');
+      px(ctx, bx + 4, by - 3, 3, 3, '#fdf8f0');
+      px(ctx, bx + 2, by - 2, 1, 1, 'rgba(200,180,160,0.9)');
+      px(ctx, bx + 5, by - 2, 1, 1, 'rgba(200,180,160,0.9)');
+    } else if (type === 'bread') {
+      // 面包
+      px(ctx, bx, by - 2, 7, 2, '#d8a050');
+      px(ctx, bx, by - 2, 7, 1, '#a06828');
+      px(ctx, bx + 1, by - 3, 1, 1, '#f0c878');
+    } else if (type === 'noodles') {
+      // 面条（碗 + 面条 + 筷子）
+      px(ctx, bx - 1, by - 1, 6, 3, '#e8e8ec');
+      px(ctx, bx, by - 2, 4, 1, '#f0d8a0');
+      px(ctx, bx + 1, by - 3, 1, 1, '#d0a860');
+      px(ctx, bx + 3, by - 3, 1, 1, '#d0a860');
+      px(ctx, bx + 5, by - 4, 1, 4, '#8a6a4a');
+    } else if (type === 'egg') {
+      // 鸡蛋
+      px(ctx, bx, by - 3, 5, 3, '#fdf8f0');
+      px(ctx, bx + 1, by - 2, 3, 2, '#ffd05a');
+      px(ctx, bx + 1, by - 3, 1, 1, '#fff8f0');
+    } else if (type === 'rice') {
+      // 米饭炒菜
+      px(ctx, bx, by - 2, 6, 2, '#f8f4e8');
+      px(ctx, bx + 1, by - 3, 2, 1, '#5a9a4a');
+      px(ctx, bx + 4, by - 3, 2, 1, '#c85a4a');
+      px(ctx, bx + 2, by - 4, 1, 1, '#e8a04a');
+    } else if (type === 'takeout') {
+      // 外卖盒
+      px(ctx, bx, by - 3, 7, 4, '#c89a5a');
+      px(ctx, bx, by - 3, 7, 1, '#b08040');
+      px(ctx, bx + 2, by - 5, 3, 1, '#e8d8a8');
+      px(ctx, bx + 1, by - 1, 1, 1, '#e06060');
+    } else if (type === 'instant') {
+      // 泡面
+      px(ctx, bx + 1, by - 4, 4, 5, '#e06060');
+      px(ctx, bx + 1, by - 2, 4, 1, '#f8f0e0');
+      px(ctx, bx + 2, by - 5, 2, 1, '#f0d8a0');
+      px(ctx, bx + 5, by - 6, 1, 2, '#ffffff');
+    } else if (type === 'hotpot') {
+      // 火锅
+      px(ctx, bx - 1, by - 2, 8, 3, '#c04838');
+      px(ctx, bx, by - 3, 6, 1, '#e88850');
+      px(ctx, bx + 1, by - 4, 1, 1, '#5a9a4a');
+      px(ctx, bx + 4, by - 4, 1, 1, '#f0f0f0');
+    }
+    // 热气（2-3 帧白色像素上升）
+    const s1 = Math.floor(t * 2.5) % 3;
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillRect(bx + 2, by - 6 - s1, 1, 1);
+    ctx.fillRect(bx + 4, by - 7 - ((s1 + 1) % 3), 1, 1);
+    ctx.fillRect(bx + 6, by - 6 - ((s1 + 2) % 3), 1, 1);
+  }
+
+  // 冰箱门开合（小人取食材时）：内部层板+食物色块 + 门平移开合 + 冷气白雾
+  function drawFridgeDoorDynamic(ctx, st, t) {
+    const open = P.Character.fridgeOpen ? P.Character.fridgeOpen() : null;
+    if (!open || !open.open) return;
+    const R = FURN.kitchen.fridge; // (268,86,13,42)
+    const p = Math.max(0, Math.min(1, open.p));
+    // 内侧（打开后可见：层板 + 食物色块）
+    px(ctx, R.x + 1, R.y + 2, R.w - 3, R.h - 4, '#2a3038');
+    px(ctx, R.x + 2, R.y + 12, R.w - 5, 1, '#4a5260');
+    px(ctx, R.x + 2, R.y + 24, R.w - 5, 1, '#4a5260');
+    px(ctx, R.x + 2, R.y + 4, 2, 5, '#e8f0f8');    // 牛奶
+    px(ctx, R.x + 5, R.y + 4, 2, 3, '#7ac85a');    // 蔬菜
+    px(ctx, R.x + 8, R.y + 4, 2, 4, '#e0a060');    // 果汁
+    px(ctx, R.x + 2, R.y + 14, 3, 3, '#f0d8a0');   // 鸡蛋
+    px(ctx, R.x + 7, R.y + 14, 2, 2, '#c85a4a');   // 番茄
+    px(ctx, R.x + 2, R.y + 26, 3, 4, '#d8a04a');   // 面包
+    px(ctx, R.x + 6, R.y + 26, 2, 2, '#5a8fc8');   // 冰格
+    // 门（向左平移开合：宽度随 p 收缩，露出内部）
+    const doorW = Math.round((R.w - 2) * (1 - p));
+    if (doorW > 0) {
+      const doorX = R.x + 1;
+      px(ctx, doorX, R.y + 1, doorW, R.h - 2, '#d8dce4');
+      px(ctx, doorX, R.y + 1, doorW, 2, '#eef1f6');
+      px(ctx, doorX + doorW - 1, R.y + 3, 1, R.h - 4, '#e8ecf2');
+      px(ctx, doorX, R.y + 1 + (R.h >> 1) - 1, doorW, 1, '#b8bcc8');
+      px(ctx, doorX + doorW - 4, R.y + 8, 1, 4, '#9aa0ae');
+      px(ctx, doorX + doorW - 4, R.y + (R.h >> 1) + 8, 1, 4, '#9aa0ae');
+    }
+    // 冷气白雾（从开口向上飘散）
+    const f1 = Math.floor(t * 2.5) % 3;
+    ctx.fillStyle = 'rgba(230,245,255,0.8)';
+    ctx.fillRect(R.x + 3, R.y - 2 - f1, 1, 1);
+    ctx.fillRect(R.x + 7, R.y - 3 - ((f1 + 1) % 3), 1, 1);
+    ctx.fillRect(R.x + 10, R.y - 2 - ((f1 + 2) % 3), 1, 1);
+    ctx.fillStyle = 'rgba(230,245,255,0.5)';
+    ctx.fillRect(R.x + 5, R.y - 4 - f1, 1, 1);
+  }
+
+  // 猫在工作区桌面：踩键盘 + 推咖啡杯（泼溅）
+  function drawDeskCatEffects(ctx, st, t) {
+    const perch = P.Cat.perchId ? P.Cat.perchId() : null;
+    if (perch !== 'desk') return;
+    const k = FURN.workspace.keyboard;
+    // 键盘上的猫爪（踩键盘）
+    if (Math.floor(t * 4) % 2 === 0) {
+      ctx.fillStyle = '#e89a4a';
+      ctx.fillRect(k.x + 2, k.y - 1, 2, 1);
+    }
+    // 咖啡杯被推歪的泼溅
+    const it = P.Storage.state.items || {};
+    if ((it.cup || 0) > 1) {
+      ctx.fillStyle = 'rgba(74,42,26,0.8)';
+      ctx.fillRect(135, 104, 1, 1);
+    }
+  }
 
   P.RoomLayout = {
     windows: windows,

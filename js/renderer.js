@@ -36,10 +36,17 @@
     return st;
   }
 
-  // 静态场景缓存签名（季节/灯状态变化时需要重建）
+  // 静态场景缓存签名（季节/灯状态/动态物品状态变化时需要重建）
   function staticSignature(st) {
     const lampState = P.RoomLayout.lights().map(function (l) { return l.on ? '1' : '0'; }).join('');
-    return st.season.id + '|' + lampState + '|' + (P.Storage.state.settings.anim ? '1' : '0');
+    const it = P.Storage.state.items || {};
+    const pkg = it.pkg || {};
+    const meal = P.Character.mealFood ? (P.Character.mealFood() || {}).type || '' : '';
+    const perch = P.Cat.perchId ? (P.Cat.perchId() || '') : '';
+    return st.season.id + '|' + lampState + '|' + (P.Storage.state.settings.anim ? '1' : '0') +
+      '|' + (it.cup != null ? it.cup : '') + '|' + (it.blanket || '') +
+      '|' + (it.bowl != null ? it.bowl : '') + '|' + (it.dishes || 0) +
+      '|' + (pkg.state || '') + '|' + (pkg.item || '') + '|' + meal + '|' + perch;
   }
 
   function ensureStaticCache(st) {
