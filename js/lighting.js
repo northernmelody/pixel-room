@@ -207,17 +207,118 @@
     }
   }
 
+  // ---- 窗户光斑（平行四边形投影，随太阳位置变化）----
+  function drawWindowLightPatches(ctx, st, t) {
+    const wins = P.RoomLayout ? P.RoomLayout.windows() : [];
+    const ast = st.ast;
+    const h = st.tp ? st.tp.hour : 12;
+    const rainy = st.weather.condition.rain > 0 || st.weather.condition.snow > 0;
+    // 白天光斑（08:00 - 18:30），黄昏偏暖
+    const dayPatch = st.day > 0.06 && h >= 8 && h <= 18.6;
+    // 深夜月光（00:00 - 05:00）
+    const moonPatch = h >= 0 && h < 5 && st.ast.night;
+    const y0 = C.FLOOR_Y, y1 = H;
+    for (let i = 0; i < wins.length; i++) {
+      const w = wins[i];
+      // 光斑斜度：太阳/月亮位置 → 缓慢变化的角度
+      const slant = dayPatch ? ((ast.sunT - 0.5) * 1.5 + Math.sin(t * 0.06 + i * 1.7) * 0.18)
+        : moonPatch ? ((ast.moonT - 0.5) * 1.1 + Math.sin(t * 0.04 + i * 2.3) * 0.12) : 0;
+      const dx = slant * (y1 - y0);
+      const x0 = w.x, x1 = w.x + w.w;
+      if (dayPatch) {
+        // 黄昏偏暖：白色 → 暖黄
+        const warm = st.tw;
+        const rr = 255, gg = Math.round(247 - warm * 30), bb = Math.round(216 - warm * 60);
+        const a = 0.11 + st.day * 0.045 + (warm > 0.05 ? 0.02 : 0);
+        const alpha = a * (1 - rainy * 0.45); // 雨雪天光斑减弱
+        if (alpha <= 0.01) continue;
+        // 平行四边形 + 水平软边
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y0);
+        ctx.lineTo(x1 + dx, y1);
+        ctx.lineTo(x0 + dx, y1);
+        ctx.closePath();
+        ctx.clip();
+        const g = ctx.createLinearGradient(x0, 0, x1, 0);
+        g.addColorStop(0, rgba(rr, gg, bb, 0));
+        g.addColorStop(0.3, rgba(rr, gg, bb, alpha));
+        g.addColorStop(0.7, rgba(rr, gg, bb, alpha));
+        g.addColorStop(1, rgba(rr, gg, bb, 0));
+        ctx.fillStyle = g;
+        ctx.fillRect(x0 + Math.min(0, dx), y0, x1 - x0 + Math.abs(dx), y1 - y0);
+        ctx.restore();
+      } else if (moonPatch) {
+        // 月光：淡蓝
+        const a = 0.055;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y0);
+        ctx.lineTo(x1 + dx, y1);
+        ctx.lineTo(x0 + dx, y1);
+        ctx.closePath();
+        ctx.clip();
+        const g = ctx.createLinearGradient(x0, 0, x1, 0);
+        g.addColorStop(0, rgba(190, 205, 255, 0));
+        g.addColorStop(0.3, rgba(190, 205, 255, a));
+        g.addColorStop(0.7, rgba(190, 205, 255, a));
+        g.addColorStop(1, rgba(190, 205, 255, 0));
+        ctx.fillStyle = g;
+        ctx.fillRect(x0 + Math.min(0, dx), y0, x1 - x0 + Math.abs(dx), y1 - y0);
+        ctx.restore();
+      }
+    }
+  }
+
+  // ---- 电脑屏幕冷光（工作时段，投射到桌面与小人的方向）----
+  function drawScreenGlow(ctx, st, t) {
+    if (!(st.activity && st.activity.id === 'work')) return;
+    const R = P.RoomLayout && P.RoomLayout.monitorRect ? P.RoomLayout.monitorRect() : null;
+    if (!R) return;
+    const cx = R.x + R.w / 2, cy = R.y + R.h / 2;
+    ctx.globalCompositeOperation = 'lighter';
+    // 屏幕前冷蓝光晕（覆盖桌面与小人面部区域）
+    const g = ctx.createRadialGradient(cx + 2, cy + 6, 2, cx + 2, cy + 6, 36);
+    g.addColorStop(0, rgba(96, 168, 255, 0.15));
+    g.addColorStop(0.45, rgba(96, 168, 255, 0.07));
+    g.addColorStop(1, rgba(96, 168, 255, 0));
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - 34, cy - 30, 72, 68);
+    // 朝向小人的冷光带
+    const g2 = ctx.createLinearGradient(cx, cy, cx + 34, cy + 18);
+    g2.addColorStop(0, rgba(120, 180, 255, 0.11));
+    g2.addColorStop(1, rgba(120, 180, 255, 0));
+    ctx.fillStyle = g2;
+    ctx.fillRect(cx, cy - 12, 36, 46);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   // ---- 室内光照叠加 ----
   function applyInterior(ctx, st) {
     const amb = st.ambient;
-    const dark = Math.max(0, (1 - amb) * 0.74);
+    const weather = st.weather.condition;
+    const rainy = weather.rain > 0 || weather.snow > 0;
+    let dark = Math.max(0, (1 - amb) * 0.74);
+    if (rainy) dark *= 0.5; // 雨雪天阴影变淡、对比度降低
     const t = performance.now() / 1000;
 
     // 1) 整体变暗
-    ctx.fillStyle = rgba(6, 10, 26, Math.min(0.84, dark * 1.0));
+    ctx.fillStyle = rgba(6, 10, 26, Math.min(0.84, dark));
     ctx.fillRect(0, C.CEILING_Y, W, H - C.CEILING_Y);
 
-    // 2) 窗户光（日间暖光 / 夜间月光）
+    // 1.5) 雨雪天散射光（柔和冷色漫射，降低对比）
+    if (rainy) {
+      const rainK = Math.max(weather.rain, weather.snow);
+      ctx.fillStyle = rgba(150, 172, 208, 0.05 + rainK * 0.03);
+      ctx.fillRect(0, C.CEILING_Y, W, H - C.CEILING_Y);
+    }
+
+    // 2) 窗户光斑（地面平行四边形投影）
+    drawWindowLightPatches(ctx, st, t);
+
+    // 3) 窗户周围光（日间暖光 / 夜间月光）
     const wins = P.RoomLayout ? P.RoomLayout.windows() : [];
     for (let i = 0; i < wins.length; i++) {
       const w = wins[i];
@@ -238,24 +339,43 @@
       }
     }
 
-    // 3) 灯具光（叠加）
+    // 4) 电脑屏幕冷光
+    drawScreenGlow(ctx, st, t);
+
+    // 5) 灯具光（暖光晕，径向渐变，边缘柔和）
     ctx.globalCompositeOperation = 'lighter';
     const lights = P.RoomLayout ? P.RoomLayout.lights() : [];
     for (let i = 0; i < lights.length; i++) {
       const l = lights[i];
       if (!l.on) continue;
       const flicker = 1 + Math.sin(t * 11 + l.seed * 7) * 0.03 + (Math.random() - 0.5) * 0.02;
-      const g = ctx.createRadialGradient(l.x, l.y, 1, l.x, l.y, l.r);
       const a = l.a * flicker;
-      g.addColorStop(0, rgba(255, 224, 150, a));
-      g.addColorStop(0.45, rgba(255, 200, 110, a * 0.5));
-      g.addColorStop(1, rgba(255, 200, 110, 0));
+      // 主光晕
+      const g = ctx.createRadialGradient(l.x, l.y, 1, l.x, l.y, l.r);
+      g.addColorStop(0, rgba(255, 240, 180, a * 1.15));
+      g.addColorStop(0.3, rgba(255, 222, 140, a * 0.85));
+      g.addColorStop(0.65, rgba(255, 200, 108, a * 0.4));
+      g.addColorStop(1, rgba(255, 200, 108, 0));
       ctx.fillStyle = g;
       ctx.fillRect(l.x - l.r, l.y - l.r, l.r * 2, l.r * 2);
+      // 灯芯亮斑
+      const core = ctx.createRadialGradient(l.x, l.y, 0.5, l.x, l.y, Math.max(4, l.r * 0.22));
+      core.addColorStop(0, rgba(255, 252, 230, a * 1.2));
+      core.addColorStop(1, rgba(255, 240, 180, 0));
+      ctx.fillStyle = core;
+      ctx.fillRect(l.x - 5, l.y - 5, 10, 10);
+      // 地面暖光池（吊灯）
+      if (l.kind === 'ceiling') {
+        const eg = ctx.createRadialGradient(l.x, C.FLOOR_Y + 20, 2, l.x, C.FLOOR_Y + 20, 24);
+        eg.addColorStop(0, rgba(255, 224, 150, a * 0.11));
+        eg.addColorStop(1, rgba(255, 224, 150, 0));
+        ctx.fillStyle = eg;
+        ctx.fillRect(l.x - 24, C.FLOOR_Y - 2, 48, 44);
+      }
     }
     ctx.globalCompositeOperation = 'source-over';
 
-    // 4) 夜间上部蓝晕
+    // 6) 夜间上部蓝晕
     if (dark > 0.25) {
       const g = ctx.createLinearGradient(0, C.CEILING_Y, 0, C.FLOOR_Y + 20);
       const a = Math.min(0.28, (dark - 0.25) * 0.45);
@@ -265,10 +385,11 @@
       ctx.fillRect(0, C.CEILING_Y, W, C.FLOOR_Y + 20 - C.CEILING_Y);
     }
 
-    // 5) 暗角
+    // 7) 暗角（雨雪天更淡）
+    const vigK = rainy ? 0.65 : 1;
     const vg = ctx.createRadialGradient(W / 2, H * 0.42, H * 0.5, W / 2, H * 0.42, H * 0.85);
     vg.addColorStop(0, 'rgba(0,0,0,0)');
-    vg.addColorStop(1, 'rgba(0,0,0,' + (0.16 + dark * 0.22).toFixed(3) + ')');
+    vg.addColorStop(1, 'rgba(0,0,0,' + ((0.16 + dark * 0.22) * vigK).toFixed(3) + ')');
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, W, H);
   }

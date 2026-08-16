@@ -83,7 +83,23 @@
       floorWood: '#b98a5a', floorWoodDark: '#a27848',
       floorTile: '#c8d2d0', floorTileDark: '#b4c0be',
       baseboard: '#8a6a4a',
-      lampWarm: '#ffd98a'
+      lampWarm: '#ffd98a',
+
+      // ---- 视觉强化：地面材质 ----
+      floorBedroomPlanks: ['#b98a5a', '#b28a52', '#ab824d', '#c0915f', '#b58a57', '#ae8550'],
+      floorBedroomJoint: '#8a6a40',
+      floorCarpet: '#6e7788', floorCarpetDark: '#5d6676', floorCarpetEdge: '#4c5460', floorCarpetDot: '#7c8594',
+      floorBathBase: '#cfe2e8', floorBathDark: '#a9bcc2', floorBathGrout: '#8e9ca0', floorBathShine: '#eef8fa',
+      floorKitchA: '#8a5a44', floorKitchB: '#6e4534', floorKitchDark: '#53362a', floorKitchWear: '#96705a',
+      thresholdDark: '#332e2a', thresholdLight: '#6a6258',
+      // ---- 视觉强化：墙面 ----
+      wallWainscotBath: '#5a7a84', wallWainscotBathDark: '#4a6670',
+      wallWainscotKitchen: '#3f6a4a', wallWainscotKitchenDark: '#345a3e',
+      wallTileUpper: '#dce8ec', wallTileUpperGrout: '#aebcc2',
+      wallTileSmall: '#e8f0f2', wallTileSmallGrout: '#b4c2c6',
+      waistline: '#46586a', waistlineLight: '#7a8a96',
+      woodLight: '#9c6a40', woodMid: '#8a5a34', woodDark: '#6e4626', woodDarkest: '#5a3a22',
+      metalLight: '#e8ecf2', metalMid: '#b8c0cc', metalDark: '#8a94a2'
     }
   };
 })();

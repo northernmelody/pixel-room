@@ -148,6 +148,16 @@
     return { shirt: shirt, pants: pants };
   }
 
+  // 衣物褶皱（1px 明暗交替线）
+  function drawFolds(ctx, hx, topY, shirt) {
+    ctx.fillStyle = 'rgba(0,0,0,0.20)';
+    ctx.fillRect(hx - 2, topY + 6, 4, 1);   // 腰部褶皱
+    ctx.fillRect(hx - 1, topY + 9, 2, 1);   // 下摆褶皱
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.fillRect(hx - 3, topY + 2, 6, 1);   // 肩部高光
+    ctx.fillRect(hx + 1, topY + 5, 1, 2);   // 侧身高光线
+  }
+
   function drawHead(ctx, hx, topY, d, skin, hair) {
     // 头 8x10
     ctx.fillStyle = skin;
@@ -200,9 +210,12 @@
     // 身体
     ctx.fillStyle = o.shirt;
     ctx.fillRect(hx - 4, 106, 8, 12);
+    drawFolds(ctx, hx, 106, o.shirt);
     // 手臂（垂放）
     ctx.fillRect(hx - 5, 108, 2, 7);
     ctx.fillRect(hx + 3, 108, 2, 7);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(hx - 5, 108, 1, 4);
     drawHead(ctx, hx, 96, d);
   }
 
@@ -218,9 +231,12 @@
     ctx.fillRect(hx + 1 + l2, 126 - bob, 3, 2);
     ctx.fillStyle = o.shirt;
     ctx.fillRect(hx - 4, 105 - bob, 8, 11);
+    drawFolds(ctx, hx, 105 - bob, o.shirt);
     // 摆臂
     ctx.fillRect(hx - 5 + l1, 107 - bob, 2, 7);
     ctx.fillRect(hx + 3 - l1, 107 - bob, 2, 7);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(hx - 5 + l1, 107 - bob, 1, 4);
     drawHead(ctx, hx, 95 - bob, d);
   }
 
@@ -234,6 +250,7 @@
     ctx.fillRect(hx - 8, 126, 3, 2);
     ctx.fillStyle = o.shirt;
     ctx.fillRect(hx - 4, 106, 8, 13);      // 躯干
+    drawFolds(ctx, hx, 106, o.shirt);
     // 打字手臂（前后摆动）
     const arm = Math.round(Math.sin(t * 9) * 0.8);
     ctx.fillRect(hx - 13, 108 + arm, 10, 2);
@@ -255,6 +272,7 @@
     ctx.fillRect(hx + 4, 126, 3, 2);
     ctx.fillStyle = o.shirt;
     ctx.fillRect(hx - 4, 106, 8, 13);
+    drawFolds(ctx, hx, 106, o.shirt);
     // 手臂夹菜（上下动）
     const arm = Math.round(Math.sin(t * 6) * 1.5);
     ctx.fillRect(hx + 2, 104 + arm, 2, 8);
@@ -273,6 +291,7 @@
     ctx.fillRect(hx + 5, 126, 3, 2);
     ctx.fillStyle = o.shirt;
     ctx.fillRect(hx - 4, 100, 8, 13);
+    drawFolds(ctx, hx, 100, o.shirt);
     // 手机
     ctx.fillStyle = '#2a2a3a';
     ctx.fillRect(hx + 4, 103, 4, 6);
@@ -299,6 +318,7 @@
     ctx.fillRect(hx + 1, 126, 3, 2);
     ctx.fillStyle = o.shirt;
     ctx.fillRect(hx - 4, 106, 8, 12);
+    drawFolds(ctx, hx, 106, o.shirt);
     // 举牙刷的手臂
     const arm = Math.round(Math.sin(t * 7) * 1);
     ctx.fillStyle = o.shirt;
@@ -320,6 +340,7 @@
     ctx.fillRect(hx + 1, 126, 3, 2);
     ctx.fillStyle = o.shirt;
     ctx.fillRect(hx - 4, 106, 8, 12);
+    drawFolds(ctx, hx, 106, o.shirt);
     // 举杯
     ctx.fillStyle = o.shirt;
     ctx.fillRect(hx + 2, 104, 2, 8);

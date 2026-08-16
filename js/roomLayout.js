@@ -1,5 +1,7 @@
 /* ============================================================
  * roomLayout.js —— 房间布局数据与绘制（卧室/工作区/卫生间/厨房）
+ * 视觉强化版：分层绘制（z=0 背景 / z=1 中景 / z=2 前景）
+ * 静态场景绘制到离屏缓存，动态光影/动画逐帧绘制
  * ============================================================ */
 (function () {
   'use strict';
@@ -11,9 +13,10 @@
   const FURN = {
     bedroom: {
       window: { x: 56, y: 54, w: 16, h: 32 },
+      wardrobe: { x: 2, y: 56, w: 13, h: 44 },
       bed: { x: 8, y: 112, w: 36, h: 16 },
       pillow: { x: 10, y: 104, w: 7, h: 8 },
-      blanket: { x: 17, y: 112, w: 27, h: 6 },
+      blanket: { x: 17, y: 112, w: 27, h: 8 },
       nightstand: { x: 46, y: 116, w: 9, h: 12 },
       nightLamp: { x: 48, y: 100, w: 5, h: 16 },
       rug: { x: 14, y: 128, w: 36, h: 4 },
@@ -26,10 +29,12 @@
     workspace: {
       window: { x: 138, y: 54, w: 16, h: 32 },
       bookshelf: { x: 86, y: 58, w: 16, h: 30 },
+      poster: { x: 110, y: 58, w: 8, h: 10 },
+      socket: { x: 124, y: 92, w: 5, h: 8 },
       desk: { x: 104, y: 108, w: 40, h: 20 },
       monitor: { x: 106, y: 84, w: 18, h: 24 },
-      keyboard: { x: 116, y: 106, w: 16, h: 2 },
-      mug: { x: 132, y: 104, w: 3, h: 4 },
+      keyboard: { x: 116, y: 107, w: 16, h: 2 },
+      mug: { x: 132, y: 105, w: 3, h: 4 },
       deskLamp: { x: 136, y: 94, w: 7, h: 16 },
       chair: { x: 142, y: 116, w: 14, h: 12 },
       rug: { x: 104, y: 128, w: 44, h: 4 },
@@ -41,16 +46,18 @@
       window: { x: 212, y: 54, w: 16, h: 32 },
       shower: { x: 162, y: 94, w: 22, h: 34 },
       showerHead: { x: 171, y: 52, w: 4, h: 44 },
-      mirror: { x: 188, y: 76, w: 13, h: 16 },
+      mirror: { x: 186, y: 78, w: 17, h: 17 },
       sink: { x: 186, y: 102, w: 16, h: 26 },
       toilet: { x: 210, y: 98, w: 12, h: 30 },
-      towel: { x: 204, y: 62, w: 2, h: 12 },
+      towel: { x: 203, y: 60, w: 4, h: 14 },
       cabinet: { x: 226, y: 56, w: 12, h: 22 },
       ceilingLamp: { x: 200 }
     },
     kitchen: {
       window: { x: 296, y: 52, w: 14, h: 32 },
       cabinets: { x: 282, y: 56, w: 12, h: 22 },
+      potRack: { x: 244, y: 56, w: 16, h: 16 },
+      wallShelf: { x: 240, y: 84, w: 20, h: 8 },
       table: { x: 244, y: 110, w: 22, h: 18 },
       stoolA: { x: 244, y: 116, w: 8, h: 12 },
       stoolB: { x: 258, y: 116, w: 8, h: 12 },
@@ -72,6 +79,35 @@
     if (f < 0) { const k = 1 + f; r *= k; g *= k; b *= k; }
     else { r += (255 - r) * f; g += (255 - g) * f; b += (255 - b) * f; }
     return 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ')';
+  }
+  // 确定性伪随机（用于噪点等静态纹理）
+  function makeRand(seed) {
+    let s = seed | 0;
+    return function () { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+  }
+  // 地面软阴影（1-3px 圆角矩形感）
+  function groundShadow(ctx, x, y, w, h) {
+    ctx.fillStyle = 'rgba(24,18,12,0.30)';
+    ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+    ctx.fillStyle = 'rgba(24,18,12,0.18)';
+    ctx.fillRect(x, y, w, 1);
+    ctx.fillRect(x, y + h - 1, w, 1);
+    ctx.fillRect(x, y, 1, h);
+    ctx.fillRect(x + w - 1, y, 1, h);
+    ctx.fillStyle = 'rgba(24,18,12,0.10)';
+    ctx.fillRect(x - 1, y + 2, 1, h - 4);
+    ctx.fillRect(x + w, y + 2, 1, h - 4);
+  }
+  // 像素噪点（约每 100px 一个 1px 色点）
+  function sprinkle(ctx, x0, y0, w, h, dark, light) {
+    const n = Math.max(1, Math.round((w * h) / 100));
+    const rand = makeRand(x0 * 31 + y0 * 17 + 7);
+    for (let i = 0; i < n; i++) {
+      const x = x0 + ((rand() * w) | 0);
+      const y = y0 + ((rand() * h) | 0);
+      ctx.fillStyle = rand() < 0.5 ? dark : light;
+      ctx.fillRect(x, y, 1, 1);
+    }
   }
 
   // 夜间判断（用于“用户未手动开关灯前的自动开灯”）
@@ -111,10 +147,10 @@
     const out = [];
     for (let i = 0; i < 4; i++) {
       const lx = FURN[C.ROOM_IDS[i]].ceilingLamp.x;
-      out.push({ kind: 'ceiling', room: i, x: lx, y: 50, r: 50, a: 0.5, on: lampOn('ceiling', i), seed: i * 3 + 1 });
+      out.push({ kind: 'ceiling', room: i, x: lx, y: 50, r: 46, a: 0.5, on: lampOn('ceiling', i), seed: i * 3 + 1 });
     }
-    out.push({ kind: 'deskLamp', x: 139, y: 97, r: 26, a: 0.6, on: lampOn('deskLamp'), seed: 11 });
-    out.push({ kind: 'nightLamp', x: 50.5, y: 102, r: 26, a: 0.5, on: lampOn('nightLamp'), seed: 17 });
+    out.push({ kind: 'deskLamp', x: 139, y: 97, r: 24, a: 0.68, on: lampOn('deskLamp'), seed: 11 });
+    out.push({ kind: 'nightLamp', x: 50.5, y: 102, r: 24, a: 0.55, on: lampOn('nightLamp'), seed: 17 });
     return out;
   }
 
@@ -135,22 +171,36 @@
   function monitorRect() { return FURN.workspace.monitor; }
 
   // ============================================================
-  // 绘制主体
+  // 静态场景（离屏缓存）：结构 + 墙面装饰 + 窗户静态 + 中景 + 前景
   // ============================================================
   function drawHouse(ctx, st) {
-    drawStructure(ctx, st);
-    for (let i = 0; i < 4; i++) drawFurniture(ctx, st, i);
-    drawSeasonItems(ctx, st);
-    for (let i = 0; i < 4; i++) drawCeilingLamp(ctx, i);
+    drawStructureBase(ctx, st);      // z=0 结构
+    drawWallDecor(ctx, st);          // z=0 墙面装饰/材质
+    drawWindowsStatic(ctx, st);      // z=0 窗户静态（窗帘/外框/窗台）
+    drawMidFurniture(ctx, st);       // z=1 靠墙家具
+    drawForeFurniture(ctx, st);      // z=2 前景家具
+    drawSeasonItemsStatic(ctx, st);  // 季节小物件（静态部分）
   }
 
-  function drawStructure(ctx, st) {
+  // 每帧动态内容：窗内天空/中梃/反光、屏幕内容、蒸汽/水珠、风扇、吊灯
+  function drawDynamic(ctx, st, t) {
+    drawWindowsDynamic(ctx, st);
+    drawMonitorDynamic(ctx, st, t);
+    drawSteamDrops(ctx, st, t);
+    drawSeasonItemsDynamic(ctx, st, t);
+    drawCeilingLamps(ctx, st);
+  }
+
+  // ============================================================
+  // z=0 结构：屋顶、墙面、地板材质、门槛、踢脚线、门、轮廓
+  // ============================================================
+  function drawStructureBase(ctx, st) {
     // 屋顶（楼板）
     px(ctx, 0, SKY_H, W, CEIL - SKY_H, '#3a3238');
     px(ctx, 0, CEIL - 2, W, 2, '#2c262c');
     px(ctx, 0, SKY_H, W, 1, '#241f24');
 
-    // 后墙
+    // 后墙基底色 + 墙纸花纹（卧室/工作区保留条纹，卫生间/厨房由墙面装饰覆盖）
     for (let i = 0; i < 4; i++) {
       const x0 = i * RW;
       const wall = C.COLORS.wall[i];
@@ -160,28 +210,33 @@
       px(ctx, x0, FLOOR - 18, RW, 1, shade(wall, -0.16));
       px(ctx, x0, CEIL, RW, 2, shade(wall, 0.22));
       px(ctx, x0, CEIL + 2, RW, 1, shade(wall, -0.14));
-      // 墙纸花纹（细竖线）
-      ctx.fillStyle = 'rgba(0,0,0,0.045)';
-      for (let gx = x0 + 6; gx < x0 + RW; gx += 8) ctx.fillRect(gx, CEIL + 6, 1, FLOOR - 18 - CEIL - 6);
-    }
-
-    // 窗户
-    for (let i = 0; i < 4; i++) drawWindow(ctx, st, i);
-
-    // 地板
-    for (let i = 0; i < 4; i++) {
-      const x0 = i * RW;
-      if (i === 2 || i === 3) {
-        px(ctx, x0, FLOOR, RW, H - FLOOR, C.COLORS.floorTile);
-        for (let gx = x0 + 8; gx < x0 + RW; gx += 8) px(ctx, gx, FLOOR, 1, H - FLOOR, C.COLORS.floorTileDark);
-        for (let gy = FLOOR + 8; gy < H; gy += 8) px(ctx, x0, gy, RW, 1, C.COLORS.floorTileDark);
-      } else {
-        px(ctx, x0, FLOOR, RW, H - FLOOR, C.COLORS.floorWood);
-        for (let gx = x0 + 8; gx < x0 + RW; gx += 8) px(ctx, gx, FLOOR, 1, H - FLOOR, C.COLORS.floorWoodDark);
-        px(ctx, x0, FLOOR, RW, 2, shade(C.COLORS.floorWood, -0.25));
+      if (i === 0 || i === 1) {
+        // 墙纸花纹（细竖线）
+        ctx.fillStyle = 'rgba(0,0,0,0.045)';
+        for (let gx = x0 + 6; gx < x0 + RW; gx += 8) ctx.fillRect(gx, CEIL + 6, 1, FLOOR - 18 - CEIL - 6);
+        // 墙纸噪点
+        sprinkle(ctx, x0 + 2, CEIL + 3, RW - 4, FLOOR - 20 - CEIL, 'rgba(0,0,0,0.05)', 'rgba(255,255,255,0.05)');
       }
-      px(ctx, x0, FLOOR, RW, 2, C.COLORS.baseboard);
     }
+
+    // 地板：四种材质
+    drawFloorBedroom(ctx, 0, FLOOR, RW, H - FLOOR);
+    drawFloorCarpet(ctx, RW, FLOOR, RW, H - FLOOR);
+    drawFloorBath(ctx, RW * 2, FLOOR, RW, H - FLOOR);
+    drawFloorKitchen(ctx, RW * 3, FLOOR, RW, H - FLOOR);
+
+    // 门槛线：1px 深色 + 1px 高光
+    for (let i = 0; i < 3; i++) {
+      const bx = (i + 1) * RW;
+      px(ctx, bx - 1, FLOOR, 1, H - FLOOR, C.COLORS.thresholdLight);
+      px(ctx, bx, FLOOR, 1, H - FLOOR, C.COLORS.thresholdDark);
+    }
+
+    // 踢脚线
+    for (let i = 0; i < 4; i++) px(ctx, i * RW, FLOOR, RW, 2, C.COLORS.baseboard);
+
+    // 地毯（地板上、家具下）
+    drawRugs(ctx, st);
 
     // 分隔墙 + 门洞
     for (let i = 0; i < 3; i++) {
@@ -191,6 +246,9 @@
       px(ctx, bx - 3, C.DOOR_Y - 2, 2, FLOOR - C.DOOR_Y + 2, '#3f383f');
       px(ctx, bx + 1, C.DOOR_Y - 2, 2, FLOOR - C.DOOR_Y + 2, '#3f383f');
       px(ctx, bx - 3, FLOOR, 6, 2, '#3a343a');
+      // 门框高光
+      px(ctx, bx - 2, CEIL, 1, C.DOOR_Y - CEIL, '#5c545c');
+      px(ctx, bx + 1, CEIL, 1, C.DOOR_Y - CEIL, '#3a343a');
     }
 
     // 外轮廓
@@ -199,37 +257,355 @@
     px(ctx, 0, H - 2, W, 2, '#241f24');
   }
 
-  function drawWindow(ctx, st, roomIdx) {
+  // ---- 地面材质 ----
+  function drawFloorBedroom(ctx, x0, y0, w, h) {
+    // 暖棕色木地板：横向板条，相邻板色差 ±5%，板缝 + 木纹
+    const planks = C.COLORS.floorBedroomPlanks;
+    let row = 0;
+    for (let y = y0; y < y0 + h; y += 4, row++) {
+      const c = planks[row % planks.length];
+      const ph = Math.min(4, y0 + h - y);
+      px(ctx, x0, y, w, ph, c);
+      // 板缝（横向）
+      px(ctx, x0, y + ph - 1, w, 1, C.COLORS.floorBedroomJoint);
+      // 板端错缝（竖向）
+      const off = (row % 2) * 8;
+      for (let gx = x0 + 6 + off; gx < x0 + w - 3; gx += 16) {
+        px(ctx, gx, y, 1, ph - 1, C.COLORS.floorBedroomJoint);
+      }
+      // 木纹（细短线）
+      ctx.fillStyle = 'rgba(80,50,25,0.30)';
+      const rand = makeRand(x0 * 13 + y * 7 + 3);
+      for (let i = 0; i < 3; i++) {
+        const gx = x0 + 2 + ((rand() * (w - 6)) | 0);
+        ctx.fillRect(gx, y + 1 + ((rand() * (ph - 2)) | 0), 2 + ((rand() * 3) | 0), 1);
+      }
+    }
+    sprinkle(ctx, x0, y0, w, h, 'rgba(70,45,20,0.12)', 'rgba(255,235,200,0.10)');
+  }
+
+  function drawFloorCarpet(ctx, x0, y0, w, h) {
+    // 深灰色地毯：边缘收边线 + 细密点阵
+    px(ctx, x0, y0, w, h, C.COLORS.floorCarpet);
+    // 点阵
+    ctx.fillStyle = C.COLORS.floorCarpetDot;
+    for (let y = y0 + 1; y < y0 + h; y += 2) {
+      const off = (y - y0) % 2;
+      for (let x = x0 + 1 + off; x < x0 + w; x += 2) ctx.fillRect(x, y, 1, 1);
+    }
+    // 收边线（深色 1px + 高光 1px）
+    px(ctx, x0, y0, w, 1, C.COLORS.floorCarpetEdge);
+    px(ctx, x0, y0 + h - 1, w, 1, C.COLORS.floorCarpetEdge);
+    px(ctx, x0, y0, 1, h, C.COLORS.floorCarpetEdge);
+    px(ctx, x0 + w - 1, y0, 1, h, C.COLORS.floorCarpetEdge);
+    px(ctx, x0, y0 + 1, w, 1, 'rgba(160,175,200,0.10)');
+    // 噪点
+    sprinkle(ctx, x0, y0, w, h, 'rgba(30,36,48,0.25)', 'rgba(160,175,200,0.12)');
+  }
+
+  function drawFloorBath(ctx, x0, y0, w, h) {
+    // 浅蓝/白方格瓷砖 + 灰缝 + 釉面高光点
+    for (let gy = y0; gy < y0 + h; gy += 8) {
+      for (let gx = x0; gx < x0 + w; gx += 8) {
+        const cw = Math.min(8, x0 + w - gx), ch = Math.min(8, y0 + h - gy);
+        const alt = ((gx - x0) / 8 + (gy - y0) / 8) % 2 === 0;
+        px(ctx, gx, gy, cw, ch, alt ? C.COLORS.floorBathBase : C.COLORS.floorBathDark);
+        // 灰缝（右 + 下）
+        px(ctx, gx + cw - 1, gy, 1, ch, C.COLORS.floorBathGrout);
+        px(ctx, gx, gy + ch - 1, cw, 1, C.COLORS.floorBathGrout);
+        // 釉面高光点（左上角）
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fillRect(gx + 1, gy + 1, 2, 1);
+        ctx.fillRect(gx + 1, gy + 1, 1, 2);
+      }
+    }
+    sprinkle(ctx, x0, y0, w, h, 'rgba(60,90,100,0.10)', 'rgba(255,255,255,0.12)');
+  }
+
+  function drawFloorKitchen(ctx, x0, y0, w, h) {
+    // 深色棋盘格地砖（红棕陶土）+ 磨损做旧
+    for (let gy = y0; gy < y0 + h; gy += 8) {
+      for (let gx = x0; gx < x0 + w; gx += 8) {
+        const cw = Math.min(8, x0 + w - gx), ch = Math.min(8, y0 + h - gy);
+        const chk = ((gx - x0) / 8 + (gy - y0) / 8) % 2 === 0;
+        px(ctx, gx, gy, cw, ch, chk ? C.COLORS.floorKitchA : C.COLORS.floorKitchB);
+        // 砖缝
+        ctx.fillStyle = 'rgba(40,22,14,0.55)';
+        ctx.fillRect(gx + cw - 1, gy, 1, ch);
+        ctx.fillRect(gx, gy + ch - 1, cw, 1);
+        // 磨损做旧：暗斑 + 磨亮边（确定性）
+        const hsh = (gx * 7 + gy * 13) % 11;
+        if (hsh === 0 || hsh === 5) {
+          ctx.fillStyle = C.COLORS.floorKitchDark;
+          ctx.fillRect(gx + 2 + ((gx * 3) % 4), gy + 2 + ((gy * 3) % 4), 2, 1);
+        }
+        if ((gx * 3 + gy * 5) % 7 === 0) {
+          ctx.fillStyle = C.COLORS.floorKitchWear;
+          ctx.fillRect(gx + 1, gy + 1, 3, 1);
+        }
+        if ((gx * 11 + gy * 3) % 9 === 0) {
+          ctx.fillStyle = 'rgba(0,0,0,0.18)';
+          ctx.fillRect(gx + 4, gy + 4, 2, 2);
+        }
+      }
+    }
+    sprinkle(ctx, x0, y0, w, h, 'rgba(30,16,10,0.20)', 'rgba(200,150,120,0.10)');
+  }
+
+  function drawRugs(ctx, st) {
+    // 卧室地毯（编织感）
+    const R = FURN.bedroom.rug;
+    px(ctx, R.x, R.y, R.w, R.h, '#c96f4a');
+    px(ctx, R.x + 1, R.y + 1, R.w - 2, R.h - 2, '#d9825e');
+    px(ctx, R.x + 3, R.y + 2, R.w - 6, 1, '#e89a78');
+    px(ctx, R.x + 1, R.y + R.h - 1, R.w - 2, 1, '#a85535');
+    ctx.fillStyle = 'rgba(120,50,30,0.35)';
+    for (let gx = R.x + 4; gx < R.x + R.w - 3; gx += 4) ctx.fillRect(gx, R.y + 2, 1, 1);
+    // 工作区地毯
+    const W2 = FURN.workspace.rug;
+    px(ctx, W2.x, W2.y, W2.w, W2.h, '#6a788e');
+    px(ctx, W2.x + 1, W2.y + 1, W2.w - 2, W2.h - 2, '#7c8aa2');
+    px(ctx, W2.x + 1, W2.y + W2.h - 1, W2.w - 2, 1, '#566276');
+    ctx.fillStyle = 'rgba(30,40,60,0.35)';
+    for (let gx = W2.x + 4; gx < W2.x + W2.w - 3; gx += 4) ctx.fillRect(gx, W2.y + 2, 1, 1);
+  }
+
+  // ============================================================
+  // z=0 墙面装饰与材质：瓷砖墙/墙裙/腰线/挂画/镜子/毛巾/置物架/插座
+  // ============================================================
+  function drawWallDecor(ctx, st) {
+    drawBedroomDecor(ctx, st);
+    drawWorkspaceDecor(ctx, st);
+    drawBathroomDecor(ctx, st);
+    drawKitchenDecor(ctx, st);
+  }
+
+  function drawBedroomDecor(ctx, st) {
+    const R = FURN.bedroom;
+    // 挂画（像素画 + 画框高光）
+    const arts = [
+      { c: '#c85a6a', c2: '#e88a9a', scene: 'sunset' },
+      { c: '#4a7bd0', c2: '#7aa8e8', scene: 'mountain' }
+    ];
+    for (let i = 0; i < 2; i++) {
+      const f = R.frames[i];
+      const art = arts[i];
+      px(ctx, f.x, f.y, f.w, f.h, '#7a5c40');
+      px(ctx, f.x, f.y, f.w, 1, '#a08058');
+      px(ctx, f.x + 1, f.y + 1, f.w - 2, f.h - 2, '#f5ead2');
+      if (st.season.id === 'winter') {
+        // 冬景
+        px(ctx, f.x + 2, f.y + 3, 3, 3, '#bcd8ee');
+        px(ctx, f.x + 4, f.y + 5, 2, 2, '#eef6fc');
+        px(ctx, f.x + 3, f.y + 6, 1, 2, '#8aa8c0');
+      } else if (i === 0) {
+        // 落日画
+        px(ctx, f.x + 2, f.y + 2, 3, 3, art.c2);
+        px(ctx, f.x + 2, f.y + 4, 3, 1, '#ffd98a');
+        px(ctx, f.x + 1, f.y + 6, 5, 2, '#a05540');
+        px(ctx, f.x + 3, f.y + 3, 1, 1, '#fff0d0');
+      } else {
+        // 山景画
+        px(ctx, f.x + 2, f.y + 4, 3, 2, art.c);
+        px(ctx, f.x + 3, f.y + 3, 2, 1, '#5a9a5a');
+        px(ctx, f.x + 1, f.y + 6, 5, 2, '#4a7a4a');
+        px(ctx, f.x + 4, f.y + 5, 1, 1, '#fff8e8');
+      }
+      // 玻璃反光
+      ctx.fillStyle = 'rgba(255,255,255,0.20)';
+      ctx.fillRect(f.x + 1, f.y + 2, 1, 2);
+    }
+    // 床头钟
+    const cl = R.clock;
+    px(ctx, cl.x, cl.y, cl.w, cl.h, '#d8d2c4');
+    px(ctx, cl.x, cl.y, cl.w, 1, '#f0ece0');
+    px(ctx, cl.x + 1, cl.y + 1, cl.w - 2, cl.h - 2, '#ffffff');
+    px(ctx, cl.x + 3, cl.y + 3, 1, 1, '#3a3a4a');
+    px(ctx, cl.x + 3, cl.y + 3, 1, 2, '#c85a6a');
+    px(ctx, cl.x + 1, cl.y + 1, 1, cl.h - 2, 'rgba(0,0,0,0.12)');
+    // 挂钟阴影
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(cl.x + 1, cl.y + cl.h, cl.w, 1);
+  }
+
+  function drawWorkspaceDecor(ctx, st) {
+    const R = FURN.workspace;
+    // 小海报
+    const p = R.poster;
+    px(ctx, p.x, p.y, p.w, p.h, '#b8b0a0');
+    px(ctx, p.x, p.y, p.w, 1, '#d8d0c0');
+    px(ctx, p.x + 1, p.y + 1, p.w - 2, p.h - 2, '#2a3a4a');
+    // 海报内容：抽象几何
+    px(ctx, p.x + 2, p.y + 3, 4, 3, '#5ac8ff');
+    px(ctx, p.x + 3, p.y + 2, 2, 1, '#ffd05a');
+    px(ctx, p.x + 2, p.y + 6, 5, 2, '#ff8a9a');
+    px(ctx, p.x + 4, p.y + 4, 1, 1, '#ffffff');
+    // 插座 + 线缆
+    const s = R.socket;
+    px(ctx, s.x, s.y, s.w, s.h, '#d8d8de');
+    px(ctx, s.x, s.y, s.w, 1, '#f0f0f4');
+    px(ctx, s.x + 1, s.y + 1, 1, s.h - 2, 'rgba(0,0,0,0.15)');
+    px(ctx, s.x + 2, s.y + 2, 1, 2, '#8a8a94');
+    px(ctx, s.x + 2, s.y + 5, 1, 2, '#8a8a94');
+    // 线缆（垂到桌面后方）
+    ctx.fillStyle = '#3a3a44';
+    ctx.fillRect(s.x + 2, s.y + s.h - 1, 1, 9);
+    ctx.fillRect(s.x + 2, s.y + s.h + 6, 2, 2);
+    ctx.fillRect(s.x + 3, s.y + s.h + 7, 1, 3);
+  }
+
+  function drawBathroomDecor(ctx, st) {
+    const R = FURN.bathroom;
+    const x0 = 160, y0 = CEIL;
+    // 上半墙：浅色瓷砖 8x8
+    for (let gy = y0; gy < 74; gy += 8) {
+      for (let gx = x0; gx < 240; gx += 8) {
+        const cw = Math.min(8, 240 - gx), ch = Math.min(8, 74 - gy);
+        const alt = ((gx - x0) / 8 + (gy - y0) / 8) % 2 === 0;
+        px(ctx, gx, gy, cw, ch, alt ? C.COLORS.wallTileUpper : C.COLORS.wallTileUpperGrout);
+        ctx.fillStyle = C.COLORS.wallTileUpperGrout;
+        ctx.fillRect(gx + cw - 1, gy, 1, ch);
+        ctx.fillRect(gx, gy + ch - 1, cw, 1);
+        ctx.fillStyle = 'rgba(255,255,255,0.30)';
+        ctx.fillRect(gx + 1, gy + 1, 2, 1);
+      }
+    }
+    // 腰线（74-76）
+    px(ctx, x0, 74, 80, 2, C.COLORS.waistline);
+    px(ctx, x0, 74, 80, 1, C.COLORS.waistlineLight);
+    // 下半墙：深色防水墙裙
+    px(ctx, x0, 76, 80, FLOOR - 76, C.COLORS.wallWainscotBath);
+    for (let gy = 76; gy < FLOOR; gy += 8) px(ctx, x0, gy, 80, 1, C.COLORS.wallWainscotBathDark);
+    for (let gx = x0 + 8; gx < 240; gx += 16) px(ctx, gx, 76, 1, FLOOR - 76, C.COLORS.wallWainscotBathDark);
+    px(ctx, x0, FLOOR - 2, 80, 1, C.COLORS.wallWainscotBathDark);
+    sprinkle(ctx, x0, 78, 80, FLOOR - 80, 'rgba(0,0,0,0.08)', 'rgba(255,255,255,0.08)');
+
+    // 圆形镜子（带渐变反光）
+    const m = R.mirror;
+    const cx = m.x + m.w / 2, cy = m.y + m.h / 2, rad = m.w / 2;
+    // 镜框
+    ctx.fillStyle = '#a08058';
+    for (let dy = -rad; dy <= rad; dy++) {
+      const dxr = Math.floor(Math.sqrt(rad * rad - dy * dy));
+      ctx.fillRect(cx - dxr - 1, cy + dy, (dxr + 1) * 2 + 1, 1);
+    }
+    // 镜面（渐变：左上亮右下暗）
+    const gg = ctx.createLinearGradient(cx - rad, cy - rad, cx + rad, cy + rad);
+    gg.addColorStop(0, '#e8f6fa');
+    gg.addColorStop(0.55, '#b8d8e2');
+    gg.addColorStop(1, '#8ab0be');
+    ctx.fillStyle = gg;
+    for (let dy = -rad + 1; dy <= rad - 1; dy++) {
+      const dxr = Math.floor(Math.sqrt((rad - 1) * (rad - 1) - dy * dy));
+      ctx.fillRect(cx - dxr, cy + dy, dxr * 2 + 1, 1);
+    }
+    // 反光高光弧
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    for (let dy = -rad + 2; dy <= -rad + 5; dy++) {
+      const dxr = Math.floor(Math.sqrt((rad - 2) * (rad - 2) - dy * dy));
+      ctx.fillRect(cx - dxr + 1, cy + dy, Math.max(2, dxr - 1), 1);
+    }
+    // 镜面内人物倒影（简化：淡色小点）
+    ctx.fillStyle = 'rgba(255,255,255,0.30)';
+    ctx.fillRect(cx - 2, cy + 2, 4, 1);
+
+    // 毛巾架 + 毛巾
+    const t = R.towel;
+    px(ctx, t.x - 2, t.y - 1, 8, 1, '#c0b8a8');
+    px(ctx, t.x - 2, t.y - 1, 8, 1, '#d8d0c0');
+    px(ctx, t.x, t.y, t.w, t.h, '#e8e2d2');
+    px(ctx, t.x, t.y + 3, 1, 6, '#7ac0d0');
+    px(ctx, t.x + 1, t.y + 2, 1, 7, '#5aa0b0');
+    px(ctx, t.x + 2, t.y + 4, 1, 6, '#7ac0d0');
+    px(ctx, t.x, t.y, t.w, 1, '#f8f4ec');
+  }
+
+  function drawKitchenDecor(ctx, st) {
+    const R = FURN.kitchen;
+    const x0 = 240;
+    // 上半墙：米白小方格瓷砖 4x4
+    for (let gy = CEIL; gy < 84; gy += 4) {
+      for (let gx = x0; gx < 320; gx += 4) {
+        const cw = Math.min(4, 320 - gx), ch = Math.min(4, 84 - gy);
+        const alt = ((gx - x0) / 4 + (gy - CEIL) / 4) % 2 === 0;
+        px(ctx, gx, gy, cw, ch, alt ? C.COLORS.wallTileSmall : '#dce4e6');
+        ctx.fillStyle = C.COLORS.wallTileSmallGrout;
+        ctx.fillRect(gx + cw - 1, gy, 1, ch);
+        ctx.fillRect(gx, gy + ch - 1, cw, 1);
+      }
+    }
+    // 下半墙：深绿色护墙板
+    px(ctx, x0, 84, 80, FLOOR - 84, C.COLORS.wallWainscotKitchen);
+    for (let gy = 84; gy < FLOOR; gy += 8) px(ctx, x0, gy, 80, 1, C.COLORS.wallWainscotKitchenDark);
+    for (let gx = x0 + 8; gx < 320; gx += 16) px(ctx, gx, 84, 1, FLOOR - 84, C.COLORS.wallWainscotKitchenDark);
+    px(ctx, x0, FLOOR - 2, 80, 1, C.COLORS.wallWainscotKitchenDark);
+    // 护墙板上沿高光
+    px(ctx, x0, 84, 80, 1, '#5a8a5a');
+    sprinkle(ctx, x0, 86, 80, FLOOR - 88, 'rgba(0,0,0,0.08)', 'rgba(160,220,160,0.08)');
+
+    // 锅铲挂钩
+    const pr = R.potRack;
+    px(ctx, pr.x, pr.y, pr.w, 1, '#7a7a88');
+    px(ctx, pr.x, pr.y, pr.w, 1, '#9a9aa8');
+    px(ctx, pr.x + 2, pr.y + 1, 1, 1, '#8a8a98');
+    px(ctx, pr.x + 7, pr.y + 1, 1, 1, '#8a8a98');
+    px(ctx, pr.x + 13, pr.y + 1, 1, 1, '#8a8a98');
+    // 挂锅 1（深灰）
+    px(ctx, pr.x + 1, pr.y + 2, 4, 3, '#5a5a66');
+    px(ctx, pr.x + 1, pr.y + 2, 4, 1, '#6a6a76');
+    px(ctx, pr.x + 3, pr.y + 5, 2, 2, '#4a4a56');
+    // 挂锅 2（红棕）
+    px(ctx, pr.x + 6, pr.y + 2, 4, 4, '#8a4a3a');
+    px(ctx, pr.x + 6, pr.y + 2, 4, 1, '#a05a48');
+    // 锅铲
+    px(ctx, pr.x + 13, pr.y + 2, 1, 6, '#8a6a4a');
+    px(ctx, pr.x + 12, pr.y + 7, 3, 1, '#c0a880');
+
+    // 置物架 + 调料罐
+    const sh = R.wallShelf;
+    px(ctx, sh.x, sh.y, sh.w, 2, C.COLORS.woodLight);
+    px(ctx, sh.x, sh.y + 2, sh.w, 1, C.COLORS.woodDark);
+    // 罐子
+    px(ctx, sh.x + 2, sh.y - 4, 3, 4, '#e8e4d8');
+    px(ctx, sh.x + 2, sh.y - 5, 3, 1, '#a08058');
+    px(ctx, sh.x + 7, sh.y - 5, 3, 5, '#b8d8b0');
+    px(ctx, sh.x + 7, sh.y - 6, 3, 1, '#7a9a6a');
+    px(ctx, sh.x + 13, sh.y - 4, 3, 4, '#e0a080');
+    px(ctx, sh.x + 13, sh.y - 5, 3, 1, '#c08060');
+  }
+
+  // ============================================================
+  // 窗户：静态部分（窗帘/外框/窗台/小花）+ 动态部分（天空/中梃/反光/霜）
+  // ============================================================
+  function drawWindowsStatic(ctx, st) {
+    for (let i = 0; i < 4; i++) drawWindowStatic(ctx, st, i);
+  }
+  function drawWindowsDynamic(ctx, st) {
+    for (let i = 0; i < 4; i++) drawWindowDynamic(ctx, st, i);
+  }
+
+  function drawWindowStatic(ctx, st, roomIdx) {
     const win = FURN[C.ROOM_IDS[roomIdx]].window;
     const x = win.x, y = win.y, w = win.w, h = win.h;
     const season = st.season.id;
-
-    // 窗帘（季节色）
     const curtainCol = season === 'spring' ? '#f0a8b8' : season === 'summer' ? '#9cc8e8' : season === 'autumn' ? '#d8a05a' : '#b0605a';
+
+    // 窗帘
     px(ctx, x - 5, y - 2, 5, h + 4, shade(curtainCol, -0.2));
     px(ctx, x - 4, y - 2, 4, h + 4, curtainCol);
+    px(ctx, x - 4, y - 2, 1, h + 4, shade(curtainCol, 0.22));
     px(ctx, x + w, y - 2, 5, h + 4, shade(curtainCol, -0.2));
     px(ctx, x + w + 1, y - 2, 4, h + 4, curtainCol);
+    px(ctx, x + w + 1, y - 2, 1, h + 4, shade(curtainCol, 0.22));
     px(ctx, x - 6, y - 3, w + 12, 2, shade(curtainCol, -0.35));
 
-    // 天空底
-    P.Lighting.drawWindowBackdrop(ctx, st, x, y, w, h);
-
-    // 窗框
+    // 窗框外沿（玻璃区域由动态绘制填充）
     px(ctx, x - 2, y - 2, w + 4, 2, '#e8e2d2');
-    px(ctx, x - 2, y + h, w + 4, 3, '#8a8074');
     px(ctx, x - 2, y - 2, 2, h + 2, '#e8e2d2');
     px(ctx, x + w, y - 2, 2, h + 2, '#e8e2d2');
-    px(ctx, x + (w >> 1), y, 1, h, '#e8e2d2');
-    px(ctx, x, y + (h >> 1), w, 1, '#e8e2d2');
-
-    // 玻璃反光
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.fillRect(x + 2, y + 2, (w >> 1) - 2, 3);
-    ctx.fillRect(x + 2, y + 8, (w >> 2) - 1, 2);
-
-    // 窗台
+    // 窗台 + 阴影
     px(ctx, x - 3, y + h + 2, w + 6, 2, '#c9bfa8');
+    px(ctx, x - 3, y + h + 4, w + 6, 1, 'rgba(0,0,0,0.22)');
 
     // 窗台小花（春夏）
     if (season === 'spring' || season === 'summer') {
@@ -240,6 +616,21 @@
       px(ctx, x + 3, y + h - 5, 1, 2, fc);
       px(ctx, x + 2, y + h - 6, 1, 1, '#ffffff');
     }
+  }
+
+  function drawWindowDynamic(ctx, st, roomIdx) {
+    const win = FURN[C.ROOM_IDS[roomIdx]].window;
+    const x = win.x, y = win.y, w = win.w, h = win.h;
+    const season = st.season.id;
+    // 天空底（动态：太阳/月亮/云）
+    P.Lighting.drawWindowBackdrop(ctx, st, x, y, w, h);
+    // 中梃
+    px(ctx, x + (w >> 1), y, 1, h, '#e8e2d2');
+    px(ctx, x, y + (h >> 1), w, 1, '#e8e2d2');
+    // 玻璃反光
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(x + 2, y + 2, (w >> 1) - 2, 3);
+    ctx.fillRect(x + 2, y + 8, (w >> 2) - 1, 2);
     // 冬季窗霜
     if (season === 'winter') {
       ctx.fillStyle = 'rgba(255,255,255,0.22)';
@@ -248,150 +639,576 @@
   }
 
   // ============================================================
-  // 家具
+  // z=1 中景家具：衣柜/书架/灶台/洗手台/冰箱/吊柜/浴室
   // ============================================================
-  function drawFurniture(ctx, st, roomIdx) {
-    if (roomIdx === 0) drawBedroom(ctx, st);
-    else if (roomIdx === 1) drawWorkspace(ctx, st);
-    else if (roomIdx === 2) drawBathroom(ctx, st);
-    else drawKitchen(ctx, st);
+  function drawMidFurniture(ctx, st) {
+    drawWardrobe(ctx, st);            // 卧室衣柜
+    drawBookshelf(ctx, st);           // 工作区书架
+    drawCounterGroup(ctx, st);        // 厨房台面+灶台+水槽
+    drawFridge(ctx, st);              // 厨房冰箱
+    drawKitchenCabinets(ctx, st);     // 厨房吊柜
+    drawVanityGroup(ctx, st);         // 卫生间洗手台
+    drawToilet(ctx, st);              // 马桶
+    drawShower(ctx, st);              // 淋浴间
+    drawBathCabinet(ctx, st);         // 卫生间吊柜
   }
 
-  function drawBedroom(ctx, st) {
-    const R = FURN.bedroom;
-    // 地毯
-    px(ctx, R.rug.x, R.rug.y, R.rug.w, R.rug.h, '#c96f4a');
-    px(ctx, R.rug.x + 1, R.rug.y + 1, R.rug.w - 2, R.rug.h - 2, '#d9825e');
-    px(ctx, R.rug.x + 3, R.rug.y + 2, R.rug.w - 6, 1, '#e89a78');
-
-    // 挂画
-    const arts = ['#c85a6a', '#4a7bd0'];
-    for (let i = 0; i < 2; i++) {
-      const f = R.frames[i];
-      px(ctx, f.x, f.y, f.w, f.h, '#8a6a4a');
-      px(ctx, f.x + 1, f.y + 1, f.w - 2, f.h - 2, '#f5ead2');
-      const art = arts[i];
-      if (st.season.id === 'winter') {
-        px(ctx, f.x + 2, f.y + 3, 3, 3, '#bcd8ee');
-      } else {
-        px(ctx, f.x + 2, f.y + 2, 2, 2, art);
-        px(ctx, f.x + 4, f.y + 4, 2, 2, shade(art, 0.3));
-      }
-    }
-
-    // 床头钟
-    const cl = R.clock;
-    px(ctx, cl.x, cl.y, cl.w, cl.h, '#e8e2d2');
-    px(ctx, cl.x + 1, cl.y + 1, cl.w - 2, cl.h - 2, '#ffffff');
-    px(ctx, cl.x + 3, cl.y + 3, 1, 1, '#3a3a4a');
-    px(ctx, cl.x + 3, cl.y + 3, 1, 2, '#c85a6a');
-
-    // 床
-    px(ctx, R.bed.x, R.bed.y + 10, R.bed.w, 6, '#7a4a2c');     // 床架底
-    px(ctx, R.bed.x, R.bed.y + 8, R.bed.w, 2, '#8f5a36');     // 床架顶
-    px(ctx, R.bed.x, R.bed.y, R.bed.w, 9, '#f4e8d4');         // 床垫
-    px(ctx, R.bed.x, R.bed.y, R.bed.w, 1, '#fff8ec');
-    // 枕头
-    px(ctx, R.pillow.x, R.pillow.y, R.pillow.w, R.pillow.h, '#ffffff');
-    px(ctx, R.pillow.x, R.pillow.y + R.pillow.h - 1, R.pillow.w, 1, '#e0d8cc');
-    // 被子（人物睡眠时头部会盖在上面，身体藏在下面）
-    px(ctx, R.blanket.x, R.blanket.y, R.blanket.w, R.blanket.h, '#5a8fc8');
-    px(ctx, R.blanket.x, R.blanket.y, R.blanket.w, 2, '#6fa3d8');
-    px(ctx, R.blanket.x, R.blanket.y + R.blanket.h - 1, R.blanket.w, 1, '#4a78a8');
-    // 被子花纹
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    for (let i = 0; i < 4; i++) ctx.fillRect(R.blanket.x + 4 + i * 6, R.blanket.y + 3, 3, 2);
-    // 床腿
-    px(ctx, R.bed.x + 1, R.bed.y + 16, 2, 4, '#5a3a22');
-    px(ctx, R.bed.x + R.bed.w - 3, R.bed.y + 16, 2, 4, '#5a3a22');
-
-    // 床头柜
-    px(ctx, R.nightstand.x, R.nightstand.y, R.nightstand.w, R.nightstand.h, '#8a5a34');
-    px(ctx, R.nightstand.x, R.nightstand.y, R.nightstand.w, 2, '#9c6a40');
-    px(ctx, R.nightstand.x + 2, R.nightstand.y + 6, R.nightstand.w - 4, 1, '#6e4626');
-    // 台灯
-    const lampOn = P.RoomLayout.lampOn ? P.RoomLayout.lampOn('nightLamp') : false;
-    px(ctx, R.nightLamp.x + 1, R.nightLamp.y + 11, 2, 3, '#4a4a5a');   // 杆
-    px(ctx, R.nightLamp.x, R.nightLamp.y + 14, 4, 2, '#3a3a4a');       // 底座
-    px(ctx, R.nightLamp.x, R.nightLamp.y, 4, 4, lampOn ? '#ffe9b0' : '#d8d2c8'); // 灯罩
-    px(ctx, R.nightLamp.x + 1, R.nightLamp.y + 4, 2, 2, lampOn ? '#fff3c4' : '#c8c2b8'); // 灯泡
+  function drawWardrobe(ctx, st) {
+    const R = FURN.bedroom.wardrobe;
+    // 地面投影
+    groundShadow(ctx, R.x - 1, R.y + R.h - 1, R.w + 2, 3);
+    // 柜体
+    px(ctx, R.x, R.y, R.w, R.h, C.COLORS.woodMid);
+    // 顶面（亮 15-20%）
+    px(ctx, R.x, R.y, R.w, 2, C.COLORS.woodLight);
+    px(ctx, R.x, R.y + 2, R.w, 1, 'rgba(255,255,255,0.14)');
+    // 侧面阴影
+    px(ctx, R.x, R.y + 2, 1, R.h - 2, C.COLORS.woodDark);
+    px(ctx, R.x + R.w - 1, R.y + 2, 1, R.h - 2, C.COLORS.woodDark);
+    // 底座
+    px(ctx, R.x, R.y + R.h - 2, R.w, 2, C.COLORS.woodDarkest);
+    // 柜门缝
+    px(ctx, R.x + 6, R.y + 2, 1, R.h - 4, C.COLORS.woodDarkest);
+    // 门板内框 + 木纹
+    px(ctx, R.x + 1, R.y + 5, 4, 12, '#a08050');
+    px(ctx, R.x + 8, R.y + 5, 4, 12, '#a08050');
+    ctx.fillStyle = 'rgba(0,0,0,0.14)';
+    for (let gy = R.y + 6; gy < R.y + 16; gy += 3) { ctx.fillRect(R.x + 2, gy, 2, 1); ctx.fillRect(R.x + 9, gy, 2, 1); }
+    // 拉手
+    px(ctx, R.x + 2, R.y + 20, 1, 2, C.COLORS.metalLight);
+    px(ctx, R.x + 9, R.y + 20, 1, 2, C.COLORS.metalLight);
+    px(ctx, R.x + 2, R.y + 20, 1, 1, '#ffffff');
   }
 
-  function drawWorkspace(ctx, st) {
-    const R = FURN.workspace;
-    // 地毯
-    px(ctx, R.rug.x, R.rug.y, R.rug.w, R.rug.h, '#7a8aa0');
-    px(ctx, R.rug.x + 1, R.rug.y + 1, R.rug.w - 2, R.rug.h - 2, '#8e9cb2');
-
-    // 书架
-    px(ctx, R.bookshelf.x, R.bookshelf.y, R.bookshelf.w, R.bookshelf.h, '#7a5230');
-    px(ctx, R.bookshelf.x, R.bookshelf.y, R.bookshelf.w, 2, '#96683e');
+  function drawBookshelf(ctx, st) {
+    const R = FURN.workspace.bookshelf;
+    groundShadow(ctx, R.x - 1, R.y + R.h - 1, R.w + 2, 3);
+    // 柜体
+    px(ctx, R.x, R.y, R.w, R.h, C.COLORS.woodMid);
+    px(ctx, R.x, R.y, R.w, 2, C.COLORS.woodLight);
+    px(ctx, R.x, R.y + 2, 1, R.h - 4, C.COLORS.woodDark);
+    px(ctx, R.x + R.w - 1, R.y + 2, 1, R.h - 4, C.COLORS.woodLight);
+    px(ctx, R.x, R.y + R.h - 2, R.w, 2, C.COLORS.woodDark);
+    // 书本
     const books = ['#c85a6a', '#4a7bd0', '#e0a84a', '#5a8f5a', '#9a6ac8'];
     for (let row = 0; row < 3; row++) {
-      const shelfY = R.bookshelf.y + 1 + row * 10;
-      let bx = R.bookshelf.x + 1;
+      const shelfY = R.y + 2 + row * 9;
+      let bx = R.x + 1;
       const cols = row === 0 ? 4 : row === 1 ? 3 : 5;
       for (let i = 0; i < cols; i++) {
         const bh = 5 + ((row + i) % 3);
         const c = books[(row * 7 + i * 3) % books.length];
         px(ctx, bx, shelfY - bh, 2, bh, c);
         px(ctx, bx, shelfY - bh, 2, 1, shade(c, 0.35));
+        px(ctx, bx + 1, shelfY - 1, 1, 1, 'rgba(0,0,0,0.30)');
         bx += 3;
       }
-      px(ctx, R.bookshelf.x, shelfY, R.bookshelf.w, 1, '#96683e');
+      // 隔板
+      px(ctx, R.x, shelfY, R.w, 1, '#96683e');
+      px(ctx, R.x, shelfY, R.w, 1, '#b08050');
     }
+    // 摆件（杯子 + 小雕像）
+    px(ctx, R.x + 12, R.y + 8 - 3, 2, 3, '#e06060');
+    px(ctx, R.x + 12, R.y + 8 - 3, 2, 1, '#f08080');
+    px(ctx, R.x + 4, R.y + 17 - 2, 2, 2, '#d8a84a');
+    px(ctx, R.x + 4, R.y + 19 - 2, 2, 1, '#e8c060');
+    // 顶部绿植
+    drawPlant(ctx, R.x + 12, R.y - 12, st.season.id);
+  }
 
-    // 桌面
-    px(ctx, R.desk.x, R.desk.y, R.desk.w, 4, '#8a5a34');
-    px(ctx, R.desk.x, R.desk.y + 4, R.desk.w, 2, '#9c6a40');
-    px(ctx, R.desk.x + 1, R.desk.y + 6, 3, 14, '#6e4626');
-    px(ctx, R.desk.x + R.desk.w - 4, R.desk.y + 6, 3, 14, '#6e4626');
-    px(ctx, R.desk.x + 2, R.desk.y - 2, 10, 2, '#e8d8b0'); // 桌面便签
+  function drawCounterGroup(ctx, st) {
+    const R = FURN.kitchen;
+    const cnt = R.counter;
+    groundShadow(ctx, cnt.x - 1, cnt.y + 22, cnt.w + 2, 3);
+    // 台面顶面（亮）+ 前缘
+    px(ctx, cnt.x, cnt.y, cnt.w, 2, '#d8c8a8');
+    px(ctx, cnt.x, cnt.y, cnt.w, 1, '#e8dcc0');
+    px(ctx, cnt.x, cnt.y + 2, cnt.w, 2, '#c8b896');
+    px(ctx, cnt.x, cnt.y + 4, cnt.w, 1, 'rgba(0,0,0,0.20)');
+    // 柜门（凹槽线 + 拉手）
+    px(ctx, cnt.x, cnt.y + 5, cnt.w, 19, '#a0927e');
+    for (let i = 0; i < 3; i++) {
+      const cx2 = cnt.x + 2 + i * 12;
+      px(ctx, cx2, cnt.y + 7, 10, 16, '#b0a28e');
+      px(ctx, cx2 + 1, cnt.y + 7, 1, 16, '#c2b4a0');
+      px(ctx, cx2 + 9, cnt.y + 7, 1, 16, '#8a8070');
+      // 凹槽把手
+      px(ctx, cx2 + 4, cnt.y + 13, 2, 4, '#7a7060');
+      px(ctx, cx2 + 4, cnt.y + 13, 1, 4, '#5a5040');
+    }
+    // 灶台（台面上）
+    drawStoveTop(ctx, st);
+    // 水槽（台面上，内凹）
+    drawKitchenSink(ctx, st);
+    // 台面绿植
+    drawPlant(ctx, R.plant.x, R.plant.y, st.season.id);
+    // 台面噪点
+    sprinkle(ctx, cnt.x, cnt.y, cnt.w, 4, 'rgba(0,0,0,0.06)', 'rgba(255,255,255,0.08)');
+  }
 
-    // 显示器
-    drawMonitor(ctx, st);
-    // 键盘
+  function drawStoveTop(ctx, st) {
+    const R = FURN.kitchen;
+    const x = R.stove.x, y = 99; // 灶台主体在台面顶
+    // 灶体
+    px(ctx, x, y, R.stove.w, 5, '#3a3a44');
+    px(ctx, x, y, R.stove.w, 1, '#55555f');
+    // 燃烧器（内凹圈）
+    px(ctx, x + 1, y + 1, 3, 2, '#23232c');
+    px(ctx, x + 1, y + 1, 1, 1, '#45454f');
+    px(ctx, x + 8, y + 1, 3, 2, '#23232c');
+    px(ctx, x + 8, y + 1, 1, 1, '#45454f');
+    // 旋钮
+    px(ctx, x + 5, y + 3, 1, 2, '#6a6a76');
+    px(ctx, x + 10, y + 3, 1, 2, '#6a6a76');
+    // 锅（左灶上）
+    px(ctx, x + 1, y - 4, 5, 3, '#6a6a76');
+    px(ctx, x + 1, y - 5, 2, 1, '#7a7a86');
+    // 平底锅（右灶上）
+    px(ctx, x + 7, y - 3, 4, 2, '#8a4a3a');
+    px(ctx, x + 8, y - 4, 2, 1, '#a05a48');
+  }
+
+  function drawKitchenSink(ctx, st) {
+    const R = FURN.kitchen.sink; // (298,100,10,6)
+    // 水槽内凹（深色盆地 + 亮边）
+    px(ctx, R.x, 102, R.w, 5, '#9aa0a8');
+    px(ctx, R.x, 102, R.w, 1, '#e8e8ec');
+    px(ctx, R.x + 1, 103, R.w - 2, 3, '#7a828a');
+    px(ctx, R.x + 1, 104, R.w - 2, 1, '#5a626a');
+    // 水龙头（金属高光）
+    px(ctx, R.x + 4, 96, 2, 4, C.COLORS.metalMid);
+    px(ctx, R.x + 5, 95, 1, 1, C.COLORS.metalLight);
+    px(ctx, R.x + 4, 96, 1, 4, C.COLORS.metalLight);
+    px(ctx, R.x + 3, 99, 4, 1, C.COLORS.metalDark);
+    // 出水嘴
+    px(ctx, R.x + 4, 93, 3, 1, C.COLORS.metalMid);
+    px(ctx, R.x + 5, 93, 1, 1, '#ffffff');
+  }
+
+  function drawFridge(ctx, st) {
+    const R = FURN.kitchen.fridge;
+    groundShadow(ctx, R.x - 1, R.y + R.h - 1, R.w + 2, 3);
+    // 柜体（圆角：上下两角去 1px）
+    px(ctx, R.x + 1, R.y, R.w - 2, R.h, '#d8dce4');
+    px(ctx, R.x, R.y + 1, 1, R.h - 1, '#d8dce4');
+    px(ctx, R.x + R.w - 1, R.y + 1, 1, R.h - 1, '#d8dce4');
+    // 顶面高光 + 圆角高光
+    px(ctx, R.x + 1, R.y, R.w - 2, 2, '#eef1f6');
+    px(ctx, R.x, R.y + 1, 1, 2, '#eef1f6');
+    px(ctx, R.x + R.w - 1, R.y + 1, 1, 2, '#eef1f6');
+    // 侧面阴影/高光
+    px(ctx, R.x, R.y + 3, 1, R.h - 4, '#c0c4cc');
+    px(ctx, R.x + R.w - 1, R.y + 3, 1, R.h - 4, '#e8ecf2');
+    // 门缝线
+    px(ctx, R.x + 2, R.y + (R.h >> 1) - 1, R.w - 4, 1, '#b8bcc8');
+    px(ctx, R.x + 2, R.y + (R.h >> 1), R.w - 4, 1, 'rgba(255,255,255,0.25)');
+    // 拉手
+    px(ctx, R.x + R.w - 4, R.y + 8, 1, 4, '#9aa0ae');
+    px(ctx, R.x + R.w - 4, R.y + (R.h >> 1) + 8, 1, 4, '#9aa0ae');
+    // 磁性贴
+    px(ctx, R.x + 3, R.y + 6, 2, 2, '#ff8a5a');
+    px(ctx, R.x + 7, R.y + 5, 2, 2, '#5ac8ff');
+    // 底部
+    px(ctx, R.x + 1, R.y + R.h - 2, R.w - 2, 2, '#c4c8d0');
+  }
+
+  function drawKitchenCabinets(ctx, st) {
+    const R = FURN.kitchen.cabinets;
+    // 吊柜（木质）
+    px(ctx, R.x, R.y, R.w, R.h, C.COLORS.woodMid);
+    px(ctx, R.x, R.y, R.w, 1, C.COLORS.woodLight);
+    px(ctx, R.x, R.y + 1, 1, R.h - 1, C.COLORS.woodDark);
+    px(ctx, R.x + R.w - 1, R.y + 1, 1, R.h - 1, C.COLORS.woodDark);
+    px(ctx, R.x, R.y + (R.h >> 1), R.w, 1, C.COLORS.woodDarkest);
+    // 门板 + 拉手
+    px(ctx, R.x + 1, R.y + 2, R.w / 2 - 2, R.h / 2 - 2, '#c2baa8');
+    px(ctx, R.x + R.w / 2, R.y + 2, R.w / 2 - 2, R.h / 2 - 2, '#c2baa8');
+    px(ctx, R.x + 2, R.y + 6, 1, 2, C.COLORS.metalLight);
+    px(ctx, R.x + R.w - 3, R.y + 6, 1, 2, C.COLORS.metalLight);
+    px(ctx, R.x + 1, R.y + R.h / 2 + 2, R.w / 2 - 2, R.h / 2 - 2, '#c2baa8');
+    px(ctx, R.x + R.w / 2, R.y + R.h / 2 + 2, R.w / 2 - 2, R.h / 2 - 2, '#c2baa8');
+    px(ctx, R.x + 2, R.y + R.h / 2 + 6, 1, 2, C.COLORS.metalLight);
+    px(ctx, R.x + R.w - 3, R.y + R.h / 2 + 6, 1, 2, C.COLORS.metalLight);
+  }
+
+  function drawVanityGroup(ctx, st) {
+    const R = FURN.bathroom.sink;
+    groundShadow(ctx, R.x - 1, R.y + 24, R.w + 2, 3);
+    // 柜体
+    px(ctx, R.x, R.y + 12, R.w, 14, C.COLORS.woodMid);
+    px(ctx, R.x, R.y + 12, R.w, 1, C.COLORS.woodDark);
+    // 柜门缝 + 拉手
+    px(ctx, R.x + R.w / 2, R.y + 13, 1, 12, C.COLORS.woodDarkest);
+    px(ctx, R.x + R.w / 2 - 2, R.y + 17, 1, 2, C.COLORS.metalLight);
+    px(ctx, R.x + R.w / 2 + 2, R.y + 17, 1, 2, C.COLORS.metalLight);
+    // 台面（顶面高光 + 前缘）
+    px(ctx, R.x, R.y, R.w, 3, '#e8e8ec');
+    px(ctx, R.x, R.y, R.w, 1, '#f8f8fc');
+    px(ctx, R.x, R.y + 3, R.w, 2, '#d4d4dc');
+    px(ctx, R.x, R.y + 5, R.w, 1, 'rgba(0,0,0,0.18)');
+    // 台盆（内凹弧线）
+    px(ctx, R.x + 2, R.y + 2, R.w - 4, 5, '#b8bcc4');
+    px(ctx, R.x + 2, R.y + 2, R.w - 4, 1, '#f4f4f8');
+    px(ctx, R.x + 3, R.y + 3, R.w - 6, 3, '#8a9098');
+    px(ctx, R.x + 3, R.y + 4, R.w - 6, 1, '#6a7078');
+    // 水龙头（金属高光）
+    px(ctx, R.x + R.w / 2, R.y - 3, 2, 3, C.COLORS.metalMid);
+    px(ctx, R.x + R.w / 2, R.y - 4, 1, 1, '#ffffff');
+    px(ctx, R.x + R.w / 2, R.y - 3, 1, 3, C.COLORS.metalLight);
+    px(ctx, R.x + R.w / 2 - 1, R.y, 4, 1, C.COLORS.metalDark);
+    // 台面皂盒
+    px(ctx, R.x + 1, R.y + 1, 2, 2, '#a8d8c8');
+  }
+
+  function drawToilet(ctx, st) {
+    const R = FURN.bathroom.toilet;
+    groundShadow(ctx, R.x - 1, R.y + R.h - 1, R.w + 2, 3);
+    // 水箱
+    px(ctx, R.x + 2, R.y, R.w - 2, 8, '#e8e8ec');
+    px(ctx, R.x + 2, R.y, R.w - 2, 1, '#ffffff');
+    px(ctx, R.x + 2, R.y + 1, 1, 7, 'rgba(0,0,0,0.12)');
+    px(ctx, R.x + R.w - 3, R.y + 1, 1, 7, 'rgba(0,0,0,0.08)');
+    // 冲水钮
+    px(ctx, R.x + 6, R.y + 2, 2, 1, '#c8c8d0');
+    // 坐垫 + 桶身
+    px(ctx, R.x, R.y + 8, R.w, 5, '#f4f4f8');
+    px(ctx, R.x, R.y + 8, R.w, 1, '#ffffff');
+    px(ctx, R.x + 1, R.y + 13, R.w - 2, 17, '#d8d8e0');
+    px(ctx, R.x + 1, R.y + 13, 2, 17, '#e8e8f0');
+    px(ctx, R.x + R.w - 3, R.y + 13, 2, 17, '#c8c8d0');
+    // 底座
+    px(ctx, R.x, R.y + R.h - 2, R.w, 2, '#c0c0cc');
+    px(ctx, R.x + 4, R.y + 2, 1, 1, '#c0c0cc');
+  }
+
+  function drawShower(ctx, st) {
+    const R = FURN.bathroom.shower;
+    groundShadow(ctx, R.x, R.y + R.h - 2, R.w, 2);
+    // 顶部框架 + 玻璃面板（半透明）
+    ctx.fillStyle = 'rgba(160,220,230,0.32)';
+    ctx.fillRect(R.x, R.y, R.w, R.h);
+    // 玻璃边框
+    px(ctx, R.x, R.y, R.w, 2, '#b8c8d0');
+    px(ctx, R.x, R.y, 2, R.h, '#b8c8d0');
+    px(ctx, R.x + R.w - 2, R.y, 2, R.h, '#b8c8d0');
+    px(ctx, R.x, R.y + R.h - 1, R.w, 1, '#9aa8b0');
+    // 玻璃高光斜线
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.fillRect(R.x + 3, R.y + 2, 2, R.h - 4);
+    ctx.fillRect(R.x + 7, R.y + 2, 1, R.h - 4);
+    // 排水格
+    px(ctx, R.x + 8, R.y + R.h - 1, 4, 1, '#8a9a98');
+    px(ctx, R.x + 9, R.y + R.h - 2, 2, 1, '#6a7a78');
+    // 花洒管（墙上）
+    const sh = FURN.bathroom.showerHead;
+    px(ctx, sh.x + 1, sh.y + 6, 1, 38, '#b8b8c0');
+    px(ctx, sh.x + 1, sh.y + 6, 1, 3, '#d8d8e0');
+    px(ctx, sh.x, sh.y + 42, 4, 2, '#c8c8d0');
+    px(ctx, sh.x, sh.y + 42, 1, 1, '#e8e8f0');
+  }
+
+  function drawBathCabinet(ctx, st) {
+    const R = FURN.bathroom.cabinet;
+    px(ctx, R.x, R.y, R.w, R.h, '#b0a896');
+    px(ctx, R.x, R.y, R.w, 1, '#c8c0ae');
+    px(ctx, R.x, R.y + 1, 1, R.h - 1, '#8a8272');
+    px(ctx, R.x + R.w - 1, R.y + 1, 1, R.h - 1, '#c8c0ae');
+    px(ctx, R.x, R.y + (R.h >> 1), R.w, 1, '#9a9080');
+    // 门板
+    px(ctx, R.x + 1, R.y + 2, R.w / 2 - 1, R.h / 2 - 2, '#c2baa8');
+    px(ctx, R.x + R.w / 2, R.y + 2, R.w / 2 - 1, R.h / 2 - 2, '#c2baa8');
+    px(ctx, R.x + 1, R.y + R.h / 2 + 1, R.w / 2 - 1, R.h / 2 - 2, '#c2baa8');
+    px(ctx, R.x + R.w / 2, R.y + R.h / 2 + 1, R.w / 2 - 1, R.h / 2 - 2, '#c2baa8');
+    px(ctx, R.x + 2, R.y + 6, 1, 2, C.COLORS.metalLight);
+    px(ctx, R.x + R.w - 3, R.y + 6, 1, 2, C.COLORS.metalLight);
+    px(ctx, R.x + 2, R.y + R.h / 2 + 5, 1, 2, C.COLORS.metalLight);
+    px(ctx, R.x + R.w - 3, R.y + R.h / 2 + 5, 1, 2, C.COLORS.metalLight);
+  }
+
+  // ============================================================
+  // z=2 前景家具：床/床头柜/电脑桌/餐桌椅
+  // ============================================================
+  function drawForeFurniture(ctx, st) {
+    drawBed(ctx, st);
+    drawNightstand(ctx, st);
+    drawDeskGroup(ctx, st);
+    drawTableGroup(ctx, st);
+  }
+
+  function drawBed(ctx, st) {
+    const R = FURN.bedroom;
+    // 地面投影
+    groundShadow(ctx, R.bed.x + 1, R.bed.y + 15, R.bed.w - 2, 3);
+    // 床头板（厚度 + 顶面高光）
+    px(ctx, R.bed.x, 100, 4, 28, C.COLORS.woodMid);
+    px(ctx, R.bed.x, 100, 4, 2, C.COLORS.woodLight);
+    px(ctx, R.bed.x, 100, 1, 28, C.COLORS.woodDark);
+    px(ctx, R.bed.x + 3, 100, 1, 28, C.COLORS.woodLight);
+    px(ctx, R.bed.x + 1, 106, 1, 18, C.COLORS.woodDark);
+    // 床架
+    px(ctx, R.bed.x, R.bed.y + 10, R.bed.w, 6, '#7a4a2c');
+    px(ctx, R.bed.x, R.bed.y + 10, R.bed.w, 2, '#8f5a36');
+    px(ctx, R.bed.x, R.bed.y + 10, 1, 6, '#96683e');
+    // 床垫（高度 + 顶面高光）
+    px(ctx, R.bed.x, R.bed.y, R.bed.w, 9, '#f4e8d4');
+    px(ctx, R.bed.x, R.bed.y, R.bed.w, 1, '#fff8ec');
+    px(ctx, R.bed.x, R.bed.y + 8, R.bed.w, 1, '#e0d8cc');
+    // 枕头（立体感）
+    px(ctx, R.pillow.x, R.pillow.y, R.pillow.w, R.pillow.h, '#ffffff');
+    px(ctx, R.pillow.x, R.pillow.y, R.pillow.w, 1, '#fffdf6');
+    px(ctx, R.pillow.x, R.pillow.y + R.pillow.h - 1, R.pillow.w, 1, '#d8d0c4');
+    px(ctx, R.pillow.x, R.pillow.y + 2, 1, 4, '#e8e2d8');
+    // 被子（隆起 + 明暗面）
+    px(ctx, R.blanket.x, R.blanket.y, R.blanket.w, R.blanket.h, '#5a8fc8');
+    px(ctx, R.blanket.x, R.blanket.y, R.blanket.w, 2, '#6fa3d8');
+    px(ctx, R.blanket.x, R.blanket.y, R.blanket.w, 1, '#7db1e0');
+    px(ctx, R.blanket.x, R.blanket.y + R.blanket.h - 1, R.blanket.w, 1, '#4a78a8');
+    // 被子花纹 + 折痕
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    for (let i = 0; i < 4; i++) ctx.fillRect(R.blanket.x + 4 + i * 6, R.blanket.y + 3, 3, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    for (let i = 0; i < 4; i++) ctx.fillRect(R.blanket.x + 5 + i * 6, R.blanket.y + 5, 1, R.blanket.h - 5);
+    // 床腿（前后层次）
+    px(ctx, R.bed.x + 1, R.bed.y + 16, 2, 2, C.COLORS.woodDarkest);
+    px(ctx, R.bed.x + R.bed.w - 3, R.bed.y + 16, 2, 2, C.COLORS.woodDarkest);
+  }
+
+  function drawNightstand(ctx, st) {
+    const R = FURN.bedroom;
+    // 床头柜
+    groundShadow(ctx, R.nightstand.x - 1, R.nightstand.y + 11, R.nightstand.w + 2, 2);
+    px(ctx, R.nightstand.x, R.nightstand.y, R.nightstand.w, 2, C.COLORS.woodLight);
+    px(ctx, R.nightstand.x, R.nightstand.y + 2, R.nightstand.w, 7, C.COLORS.woodMid);
+    px(ctx, R.nightstand.x, R.nightstand.y + 2, 1, 7, C.COLORS.woodDark);
+    px(ctx, R.nightstand.x + 2, R.nightstand.y + 6, R.nightstand.w - 4, 1, C.COLORS.woodDarkest);
+    px(ctx, R.nightstand.x + R.nightstand.w - 2, R.nightstand.y + 6, 1, 1, C.COLORS.metalLight);
+    px(ctx, R.nightstand.x, R.nightstand.y + 9, R.nightstand.w, 3, C.COLORS.woodDark);
+    // 台灯（立体感）
+    const lampOn = lampOnF('nightLamp');
+    px(ctx, R.nightLamp.x + 1, R.nightLamp.y + 11, 2, 3, '#4a4a5a');
+    px(ctx, R.nightLamp.x, R.nightLamp.y + 14, 4, 2, '#3a3a4a');
+    px(ctx, R.nightLamp.x, R.nightLamp.y, 4, 4, lampOn ? '#ffe9b0' : '#d8d2c8');
+    px(ctx, R.nightLamp.x, R.nightLamp.y, 4, 1, lampOn ? '#fff3c4' : '#e8e2d8');
+    px(ctx, R.nightLamp.x + 3, R.nightLamp.y + 1, 1, 3, 'rgba(0,0,0,0.18)');
+    px(ctx, R.nightLamp.x + 1, R.nightLamp.y + 4, 2, 2, lampOn ? '#fff3c4' : '#c8c2b8');
+  }
+
+  function drawDeskGroup(ctx, st) {
+    const R = FURN.workspace;
+    // 桌面 + 腿（前后层次）
+    groundShadow(ctx, R.desk.x - 1, R.desk.y + 18, R.desk.w + 2, 3);
+    px(ctx, R.desk.x, R.desk.y, R.desk.w, 2, C.COLORS.woodLight);
+    px(ctx, R.desk.x, R.desk.y + 2, R.desk.w, 2, C.COLORS.woodMid);
+    px(ctx, R.desk.x, R.desk.y + 4, R.desk.w, 1, 'rgba(0,0,0,0.22)');
+    // 后腿（暗）
+    px(ctx, R.desk.x + 2, R.desk.y + 5, 3, 15, C.COLORS.woodDarkest);
+    px(ctx, R.desk.x + R.desk.w - 5, R.desk.y + 5, 3, 15, C.COLORS.woodDarkest);
+    // 前腿（亮，带高光）
+    px(ctx, R.desk.x + 1, R.desk.y + 5, 3, 15, C.COLORS.woodMid);
+    px(ctx, R.desk.x + R.desk.w - 4, R.desk.y + 5, 3, 15, C.COLORS.woodMid);
+    px(ctx, R.desk.x + 1, R.desk.y + 5, 1, 15, C.COLORS.woodLight);
+    px(ctx, R.desk.x + R.desk.w - 4, R.desk.y + 5, 1, 15, C.COLORS.woodLight);
+    // 抽屉线
+    px(ctx, R.desk.x + 1, R.desk.y + 8, 7, 1, C.COLORS.woodDark);
+    // 便签
+    px(ctx, R.desk.x + 2, R.desk.y - 2, 10, 2, '#e8d8b0');
+    px(ctx, R.desk.x + 3, R.desk.y - 1, 6, 1, '#c8b890');
+    // 显示器外壳（静态部分：边框/支架；屏幕内容动态）
+    drawMonitorShell(ctx, st);
+    // 键盘（凸起）
+    px(ctx, R.keyboard.x, R.keyboard.y - 1, R.keyboard.w, 1, '#4a4a58');
     px(ctx, R.keyboard.x, R.keyboard.y, R.keyboard.w, R.keyboard.h, '#3a3a46');
     for (let i = 0; i < 6; i++) px(ctx, R.keyboard.x + 2 + i * 2, R.keyboard.y, 1, 1, '#55555f');
-    // 马克杯
+    px(ctx, R.keyboard.x, R.keyboard.y + R.keyboard.h, R.keyboard.w, 1, '#2a2a34');
+    // 马克杯（高光）
     px(ctx, R.mug.x, R.mug.y, R.mug.w, R.mug.h, '#e06060');
     px(ctx, R.mug.x, R.mug.y, R.mug.w, 1, '#f08080');
-
+    px(ctx, R.mug.x, R.mug.y + 1, 1, R.mug.h - 1, '#f0a0a0');
+    px(ctx, R.mug.x + 2, R.mug.y + R.mug.h - 1, 1, 1, '#c04040');
     // 台灯
-    const dlOn = P.RoomLayout.lampOn ? P.RoomLayout.lampOn('deskLamp') : false;
+    const dlOn = lampOnF('deskLamp');
     px(ctx, R.deskLamp.x + 3, R.deskLamp.y + 11, 1, 6, '#3a3a46');
     px(ctx, R.deskLamp.x + 2, R.deskLamp.y + 15, 3, 2, '#2e2e3a');
     px(ctx, R.deskLamp.x, R.deskLamp.y, 6, 3, dlOn ? '#ffe9b0' : '#cfc8c0');
+    px(ctx, R.deskLamp.x, R.deskLamp.y, 6, 1, dlOn ? '#fff6d8' : '#e0dac8');
+    px(ctx, R.deskLamp.x + 5, R.deskLamp.y + 1, 1, 2, 'rgba(0,0,0,0.2)');
     px(ctx, R.deskLamp.x + 1, R.deskLamp.y + 3, 4, 2, dlOn ? '#fff3c4' : '#b8b2a8');
-
-    // 椅子
-    px(ctx, R.chair.x, R.chair.y + 4, R.chair.w - 4, 3, '#8a5a34');
-    px(ctx, R.chair.x + R.chair.w - 4, R.chair.y, 4, R.chair.h - 4, '#7a4a2c');
-    px(ctx, R.chair.x + R.chair.w - 2, R.chair.y + 1, 1, R.chair.h - 5, '#96683e');
-    px(ctx, R.chair.x + 1, R.chair.y + 7, 2, 5, '#6e4626');
-    px(ctx, R.chair.x + 7, R.chair.y + 7, 2, 5, '#6e4626');
+    // 椅子（立体感）
+    drawChair(ctx, st);
   }
 
-  function drawMonitor(ctx, st) {
+  function drawMonitorShell(ctx, st) {
+    const R = FURN.workspace.monitor;
+    // 支架（前后层次）
+    px(ctx, R.x + 6, R.y + 20, 2, 4, '#3a3e4e');
+    px(ctx, R.x + 5, R.y + 21, 1, 3, '#4a4e5e');
+    px(ctx, R.x + 4, R.y + 24, 6, 2, '#2e2e3a');
+    px(ctx, R.x + 4, R.y + 24, 6, 1, '#4a4e5e');
+    // 底座阴影（落在桌面上）
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(R.x + 4, R.y + 26, 6, 1);
+    // 外壳（顶面高光 + 侧面阴影）
+    px(ctx, R.x, R.y, R.w, R.h, '#2a2d3a');
+    px(ctx, R.x, R.y, R.w, 2, '#3a3e4e');
+    px(ctx, R.x, R.y + 2, R.w, 1, '#4a4e5e');
+    px(ctx, R.x, R.y + 2, 2, R.h - 4, '#1c1e28');
+    px(ctx, R.x + R.w - 2, R.y + 2, 2, R.h - 4, '#343847');
+    px(ctx, R.x, R.y + R.h - 2, R.w, 2, '#1c1e28');
+    // 屏幕凹槽（动态内容绘制其上）
+    px(ctx, R.x + 1, R.y + 2, R.w - 2, R.h - 6, '#0d1017');
+    px(ctx, R.x + 1, R.y + 2, R.w - 2, 1, '#1a1d28');
+  }
+
+  function drawChair(ctx, st) {
+    const R = FURN.workspace.chair;
+    groundShadow(ctx, R.x - 1, R.y + 11, R.w + 1, 2);
+    // 座面（顶面高光）
+    px(ctx, R.x, R.y + 3, R.w - 4, 2, C.COLORS.woodLight);
+    px(ctx, R.x, R.y + 5, R.w - 4, 3, C.COLORS.woodMid);
+    px(ctx, R.x, R.y + 3, R.w - 4, 1, '#b08050');
+    // 靠背
+    px(ctx, R.x + R.w - 4, R.y, 4, R.h - 6, C.COLORS.woodMid);
+    px(ctx, R.x + R.w - 4, R.y, 4, 1, C.COLORS.woodLight);
+    px(ctx, R.x + R.w - 4, R.y + 1, 1, R.h - 7, C.COLORS.woodDark);
+    px(ctx, R.x + R.w - 2, R.y + 1, 1, R.h - 7, C.COLORS.woodLight);
+    // 腿
+    px(ctx, R.x + 1, R.y + 8, 2, 4, C.COLORS.woodDark);
+    px(ctx, R.x + 7, R.y + 8, 2, 4, C.COLORS.woodDark);
+    px(ctx, R.x + 1, R.y + 8, 1, 4, C.COLORS.woodDarkest);
+    px(ctx, R.x + 7, R.y + 8, 1, 4, C.COLORS.woodDarkest);
+  }
+
+  function drawTableGroup(ctx, st) {
+    const R = FURN.kitchen;
+    // 餐桌
+    groundShadow(ctx, R.table.x - 1, R.table.y + 16, R.table.w + 2, 2);
+    px(ctx, R.table.x, R.table.y, R.table.w, 2, C.COLORS.woodLight);
+    px(ctx, R.table.x, R.table.y + 2, R.table.w, 2, C.COLORS.woodMid);
+    px(ctx, R.table.x, R.table.y + 4, R.table.w, 1, 'rgba(0,0,0,0.22)');
+    px(ctx, R.table.x + 2, R.table.y + 5, 2, 13, C.COLORS.woodDark);
+    px(ctx, R.table.x + R.table.w - 4, R.table.y + 5, 2, 13, C.COLORS.woodDark);
+    px(ctx, R.table.x + 2, R.table.y + 5, 1, 13, C.COLORS.woodMid);
+    // 凳子
+    groundShadow(ctx, R.stoolA.x - 1, R.stoolA.y + 11, R.stoolA.w + 2, 2);
+    px(ctx, R.stoolA.x, R.stoolA.y, R.stoolA.w, 2, C.COLORS.woodLight);
+    px(ctx, R.stoolA.x + 1, R.stoolA.y + 2, 2, 10, C.COLORS.woodDark);
+    groundShadow(ctx, R.stoolB.x - 1, R.stoolB.y + 11, R.stoolB.w + 2, 2);
+    px(ctx, R.stoolB.x, R.stoolB.y, R.stoolB.w, 2, C.COLORS.woodLight);
+    px(ctx, R.stoolB.x + 1, R.stoolB.y + 2, 2, 10, C.COLORS.woodDark);
+    // 餐盘（静态），蒸汽动态
+    const eating = st.activity && (st.activity.id === 'breakfast' || st.activity.id === 'lunch' || st.activity.id === 'dinner');
+    px(ctx, R.meal.x, R.meal.y + 2, R.meal.w, 2, '#e8e8ec');
+    px(ctx, R.meal.x, R.meal.y + 2, R.meal.w, 1, '#f8f8fc');
+    px(ctx, R.meal.x + 1, R.meal.y + 3, R.meal.w - 2, 1, 'rgba(0,0,0,0.12)');
+    if (eating) {
+      px(ctx, R.meal.x + 1, R.meal.y, R.meal.w - 2, 2, '#f4e8d0'); // 米饭
+      px(ctx, R.meal.x + 2, R.meal.y - 1, 2, 1, '#e0b060');        // 菜
+      px(ctx, R.meal.x + 5, R.meal.y - 3, 1, 3, '#8a6a4a');        // 筷子
+    } else {
+      px(ctx, R.meal.x + 1, R.meal.y + 1, 2, 1, '#ffffff'); // 空盘
+    }
+  }
+
+  // 花盆
+  function drawPlant(ctx, x, y, season) {
+    px(ctx, x + 1, y + 8, 5, 2, '#a0522d');
+    px(ctx, x, y + 10, 7, 3, '#8a4423');
+    px(ctx, x + 1, y + 10, 5, 1, '#b5623a');
+    px(ctx, x + 1, y + 10, 1, 2, '#c07040');
+    const leafCol = season === 'autumn' ? '#c89a3a' : season === 'winter' ? '#5a8a5a' : '#4a9a4a';
+    ctx.fillStyle = leafCol;
+    ctx.fillRect(x + 2, y + 2, 2, 6);
+    ctx.fillRect(x + 4, y, 2, 8);
+    ctx.fillRect(x + 1, y + 3, 1, 4);
+    ctx.fillRect(x + 5, y + 2, 1, 5);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.fillRect(x + 4, y + 1, 1, 3);
+    if (season === 'spring' || season === 'summer') {
+      ctx.fillStyle = season === 'spring' ? '#ff7ba2' : '#ffd23e';
+      ctx.fillRect(x + 4, y - 2, 2, 2);
+      ctx.fillRect(x + 2, y - 1, 1, 1);
+      ctx.fillRect(x + 5, y + 1, 1, 1);
+    }
+  }
+
+  // ============================================================
+  // 季节小物件（静态部分）
+  // ============================================================
+  function drawSeasonItemsStatic(ctx, st) {
+    const s = st.season.id;
+    if (s === 'summer') {
+      // 卧室空调
+      const a = FURN.bedroom.acSpot;
+      px(ctx, a.x, a.y, a.w, a.h, '#e8e8ee');
+      px(ctx, a.x, a.y, a.w, 1, '#f8f8fe');
+      px(ctx, a.x, a.y, 1, a.h, 'rgba(0,0,0,0.12)');
+      for (let i = 0; i < 4; i++) px(ctx, a.x + 2 + i * 3, a.y + 4, 2, 1, '#8a8a96');
+      px(ctx, a.x + 2, a.y + 6, 3, 2, '#7ad8ff');
+      // 工作区风扇（静态机身）
+      const f = FURN.workspace.fanSpot;
+      px(ctx, f.x, f.y + 2, 3, 6, '#5a5a66');
+      px(ctx, f.x + 1, f.y, 1, 3, '#6a6a76');
+      px(ctx, f.x, f.y + 7, 4, 1, '#4a4a56');
+    } else if (s === 'winter') {
+      // 卧室暖气
+      const h = FURN.bedroom.heaterSpot;
+      px(ctx, h.x, h.y, h.w, h.h, '#c86a5a');
+      for (let i = 0; i < 5; i++) px(ctx, h.x + 2 + i * 2, h.y + 2, 1, h.h - 4, '#e08070');
+      px(ctx, h.x + 1, h.y, h.w - 2, 1, '#e89a8a');
+      px(ctx, h.x + 1, h.y + 2, 1, h.h - 4, 'rgba(0,0,0,0.15)');
+      px(ctx, h.x, h.y + h.h, h.w, 1, 'rgba(0,0,0,0.2)');
+      // 工作区加湿器（静态机身）
+      const u = FURN.workspace.humidSpot;
+      px(ctx, u.x, u.y + 6, u.w, u.h - 6, '#8ac8d8');
+      px(ctx, u.x, u.y + 8, u.w, 1, '#a0d8e8');
+      px(ctx, u.x, u.y + 6, 1, u.h - 6, 'rgba(0,0,0,0.12)');
+      px(ctx, u.x, u.y + u.h - 2, u.w, 2, 'rgba(0,0,0,0.2)');
+      // 厨房保温壶
+      px(ctx, 256, 106, 3, 4, '#b0503a');
+      px(ctx, 257, 104, 1, 2, '#c0604a');
+      px(ctx, 256, 106, 1, 1, '#d0705a');
+    } else {
+      // 春秋：卧室窗台外花
+      if (s === 'spring') {
+        px(ctx, 74, 92, 2, 2, '#ff7ba2');
+        px(ctx, 75, 90, 1, 1, '#ffb0c4');
+      }
+    }
+  }
+
+  // 季节小物件（动态部分：风扇叶片 / 加湿器蒸汽）
+  function drawSeasonItemsDynamic(ctx, st, t) {
+    const s = st.season.id;
+    if (s === 'summer') {
+      const f = FURN.workspace.fanSpot;
+      ctx.fillStyle = '#8a8a96';
+      px(ctx, f.x - 1, f.y, 5, 2);
+      px(ctx, f.x + 1, f.y - 1 + Math.round(Math.sin(t * 12) * 0.5), 1, 1, '#c0c0cc');
+      // 厨房小风扇
+      px(ctx, 302, 96, 2, 2, '#8a8a96');
+    } else if (s === 'winter') {
+      const u = FURN.workspace.humidSpot;
+      ctx.fillStyle = 'rgba(200,240,255,0.85)';
+      px(ctx, u.x + 2, u.y + 4 - (Math.floor(t * 3) % 3), 1, 1);
+      px(ctx, u.x + 4, u.y + 2 - (Math.floor(t * 3 + 1) % 3), 1, 1);
+      px(ctx, u.x + 6, u.y + 4 - (Math.floor(t * 3 + 2) % 3), 1, 1);
+    }
+  }
+
+  // ============================================================
+  // 动态：屏幕内容 / 蒸汽 / 水珠 / 吊灯
+  // ============================================================
+  function drawMonitorDynamic(ctx, st, t) {
     const R = FURN.workspace;
     const m = R.monitor;
     const on = st.activity && st.activity.id === 'work';
-    // 支架
-    px(ctx, m.x + 6, m.y + 20, 2, 4, '#2e2e3a');
-    px(ctx, m.x + 4, m.y + 24, 6, 2, '#2e2e3a');
-    // 外壳
-    px(ctx, m.x, m.y, m.w, m.h, '#2a2d3a');
-    px(ctx, m.x, m.y, m.w, 2, '#3a3e4e');
-    // 屏幕
     const screen = { x: m.x + 1, y: m.y + 2, w: m.w - 2, h: m.h - 6 };
     if (on) {
-      drawMonitorContent(ctx, P.Character.screenMode(), performance.now() / 1000, screen.x, screen.y, screen.w, screen.h);
+      drawMonitorContent(ctx, P.Character.screenMode(), t, screen.x, screen.y, screen.w, screen.h);
     } else {
-      px(ctx, screen.x, screen.y, screen.w, screen.h, '#10131c');
       // 待机时钟
       const tp = P.Time.now();
-      const timeStr = ('0' + tp.hourInt).slice(-2) + ':' + ('0' + tp.min).slice(-2);
-      // 简易像素数字：用点阵太复杂，画简单横条
+      px(ctx, screen.x, screen.y, screen.w, screen.h, '#0d1017');
       px(ctx, screen.x + 3, screen.y + 5, 1, 8, '#5a6a8a');
       px(ctx, screen.x + 5, screen.y + 5, 1, 8, '#5a6a8a');
       px(ctx, screen.x + 9, screen.y + 5, 1, 8, '#5a6a8a');
@@ -399,12 +1216,54 @@
       px(ctx, screen.x + 7, screen.y + 7, 1, 1, '#8a9ab8');
       px(ctx, screen.x + 7, screen.y + 10, 1, 1, '#8a9ab8');
       px(ctx, screen.x + 6, screen.y + 14, 5, 1, '#3a4a6a');
+      void tp;
     }
     // 指示灯
     px(ctx, m.x + m.w - 3, m.y + m.h - 2, 1, 1, on ? '#4ae07a' : '#55555f');
   }
 
+  function drawSteamDrops(ctx, st, t) {
+    // 厨房饭菜蒸汽
+    const eating = st.activity && (st.activity.id === 'breakfast' || st.activity.id === 'lunch' || st.activity.id === 'dinner');
+    if (eating) {
+      const m = FURN.kitchen.meal;
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      const s1 = Math.floor(t * 2.5) % 3;
+      ctx.fillRect(m.x + 3, m.y - 4 - s1, 1, 1);
+      ctx.fillRect(m.x + 5, m.y - 5 - ((s1 + 1) % 3), 1, 1);
+    }
+    // 淋浴水珠
+    if (st.activity && st.activity.id === 'wash' && st.washPhase === 'shower') {
+      const R = FURN.bathroom.shower;
+      ctx.fillStyle = 'rgba(120,200,255,0.8)';
+      for (let i = 0; i < 10; i++) {
+        const dx = R.x + 3 + (((i * 13 + Math.floor(t * 5) * 3) % 16));
+        const dy = R.y + 6 + (((i * 7 + Math.floor(t * 22)) % (R.h - 8)));
+        ctx.fillRect(dx, dy, 1, 2);
+      }
+    }
+  }
+
+  function drawCeilingLamps(ctx, st) {
+    for (let i = 0; i < 4; i++) {
+      const lx = FURN[C.ROOM_IDS[i]].ceilingLamp.x;
+      const on = lampOn('ceiling', i);
+      // 灯杆
+      px(ctx, lx - 1, CEIL, 2, 6, '#6a6268');
+      px(ctx, lx - 1, CEIL, 1, 6, '#8a8288');
+      // 灯罩（上亮下暗）
+      px(ctx, lx - 5, CEIL + 6, 10, 5, on ? '#ffe9b0' : '#cfc8c0');
+      px(ctx, lx - 5, CEIL + 6, 10, 1, on ? '#fff6d8' : '#e0dac8');
+      px(ctx, lx - 5, CEIL + 10, 10, 1, on ? '#e8c888' : '#b8b2a8');
+      // 灯泡
+      px(ctx, lx - 3, CEIL + 11, 6, 3, on ? '#fff6d8' : '#b0aaa2');
+      px(ctx, lx - 2, CEIL + 11, 2, 1, '#ffffff');
+    }
+  }
+
+  // ============================================================
   // 屏幕内容（与放大弹窗共用）
+  // ============================================================
   function drawMonitorContent(ctx, mode, t, x, y, w, h) {
     px(ctx, x, y, w, h, '#0e1119');
     // 状态栏
@@ -481,11 +1340,9 @@
         px(ctx, fx - 2, fy + 1, 1, 2);
         px(ctx, fx - 3, fy + 2, 1, 1);
         if (Math.floor(t * 2) % 2) { ctx.fillStyle = 'rgba(255,255,255,0.5)'; px(ctx, fx + 3, fy - 2, 1, 1); }
-        // 便签
         px(ctx, x + 2, y + 5, 9, 7, '#f5e9c9');
         px(ctx, x + 3, y + 7, 7, 1, '#8a8a9a');
         px(ctx, x + 3, y + 9, 5, 1, '#8a8a9a');
-        // 摸鱼小提示
         px(ctx, x + 3, y + h - 4, 6, 1, '#6a7a9a');
         break;
       }
@@ -512,206 +1369,8 @@
     }
   }
 
-  function drawBathroom(ctx, st) {
-    const R = FURN.bathroom;
-    // 镜子
-    px(ctx, R.mirror.x, R.mirror.y, R.mirror.w, R.mirror.h, '#a8d8e0');
-    px(ctx, R.mirror.x + 1, R.mirror.y + 1, R.mirror.w - 2, R.mirror.h - 2, '#cdeef2');
-    px(ctx, R.mirror.x + 2, R.mirror.y + 2, 3, 2, 'rgba(255,255,255,0.6)');
-    px(ctx, R.mirror.x + 1, R.mirror.y + 1, 1, R.mirror.h - 2, '#8ab8c8');
-
-    // 毛巾架
-    px(ctx, R.towel.x, R.towel.y, R.towel.w, R.towel.h, '#e8e2d2');
-    px(ctx, R.towel.x, R.towel.y + 3, 1, 6, '#7ac0d0');
-    px(ctx, R.towel.x + 1, R.towel.y + 2, 1, 7, '#5aa0b0');
-
-    // 墙柜
-    px(ctx, R.cabinet.x, R.cabinet.y, R.cabinet.w, R.cabinet.h, '#b0a896');
-    px(ctx, R.cabinet.x, R.cabinet.y + (R.cabinet.h >> 1), R.cabinet.w, 1, '#9a9080');
-    px(ctx, R.cabinet.x + 2, R.cabinet.y + 2, 3, R.cabinet.h / 2 - 2, '#c2baa8');
-
-    // 洗手台
-    px(ctx, R.sink.x, R.sink.y + 16, R.sink.w, 10, '#b0a896');
-    px(ctx, R.sink.x, R.sink.y + 16, R.sink.w, 2, '#c2baa8');
-    px(ctx, R.sink.x, R.sink.y + 10, R.sink.w, 6, '#e8e8ec');
-    px(ctx, R.sink.x + 2, R.sink.y + 10, R.sink.w - 4, 2, '#f4f4f8');
-    px(ctx, R.sink.x + 6, R.sink.y + 6, 2, 4, '#c8c8d0');
-
-    // 马桶
-    px(ctx, R.toilet.x + 4, R.toilet.y, R.toilet.w - 4, 12, '#e8e8ec');
-    px(ctx, R.toilet.x + 2, R.toilet.y + 12, R.toilet.w - 2, 5, '#f4f4f8');
-    px(ctx, R.toilet.x + 2, R.toilet.y + 12, R.toilet.w - 2, 2, '#ffffff');
-    px(ctx, R.toilet.x + 2, R.toilet.y + 17, R.toilet.w - 2, 13, '#d8d8e0');
-    px(ctx, R.toilet.x + 4, R.toilet.y + 2, 1, 1, '#c0c0cc');
-
-    // 浴室
-    // 玻璃隔断
-    ctx.fillStyle = 'rgba(160,220,230,0.35)';
-    ctx.fillRect(R.shower.x + 18, R.shower.y + 2, 2, R.shower.h - 2);
-    ctx.fillRect(R.shower.x, R.shower.y, R.shower.w, 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.28)';
-    ctx.fillRect(R.shower.x + 16, R.shower.y + 2, 1, R.shower.h - 2);
-    // 排水格
-    px(ctx, R.shower.x + 8, R.shower.y + R.shower.h - 1, 4, 1, '#8a9a98');
-    // 花洒
-    px(ctx, R.showerHead.x + 1, R.showerHead.y + 6, 1, 38, '#b8b8c0');
-    px(ctx, R.showerHead.x, R.showerHead.y + 42, 4, 2, '#c8c8d0');
-    // 水珠（淋浴时）
-    if (st.activity && st.activity.id === 'wash' && st.washPhase === 'shower') {
-      const t = performance.now() / 1000;
-      ctx.fillStyle = 'rgba(120,200,255,0.8)';
-      for (let i = 0; i < 10; i++) {
-        const dx = R.shower.x + 3 + (((i * 13 + Math.floor(t * 5) * 3) % 16));
-        const dy = R.shower.y + 6 + (((i * 7 + Math.floor(t * 22)) % (R.shower.h - 8)));
-        ctx.fillRect(dx, dy, 1, 2);
-      }
-    }
-  }
-
-  function drawKitchen(ctx, st) {
-    const R = FURN.kitchen;
-    // 吊柜
-    px(ctx, R.cabinets.x, R.cabinets.y, R.cabinets.w, R.cabinets.h, '#b0a896');
-    px(ctx, R.cabinets.x, R.cabinets.y + (R.cabinets.h >> 1), R.cabinets.w, 1, '#9a9080');
-    px(ctx, R.cabinets.x + 3, R.cabinets.y + 2, 2, R.cabinets.h / 2 - 3, '#c2baa8');
-
-    // 冰箱
-    px(ctx, R.fridge.x, R.fridge.y, R.fridge.w, R.fridge.h, '#d8dce4');
-    px(ctx, R.fridge.x, R.fridge.y, R.fridge.w, 2, '#eef1f6');
-    px(ctx, R.fridge.x + 2, R.fridge.y + (R.fridge.h >> 1), R.fridge.w - 4, 1, '#b8bcc8');
-    px(ctx, R.fridge.x + R.fridge.w - 3, R.fridge.y + 8, 1, 4, '#9aa0ae');
-    px(ctx, R.fridge.x + R.fridge.w - 3, R.fridge.y + (R.fridge.h >> 1) + 8, 1, 4, '#9aa0ae');
-    px(ctx, R.fridge.x + 3, R.fridge.y + 6, 2, 2, '#ff8a5a');
-    px(ctx, R.fridge.x + 7, R.fridge.y + 5, 2, 2, '#5ac8ff');
-
-    // 台面
-    px(ctx, R.counter.x, R.counter.y, R.counter.w, 4, '#c8b896');
-    px(ctx, R.counter.x, R.counter.y + 4, R.counter.w, 2, '#d8c8a8');
-    px(ctx, R.counter.x, R.counter.y + 6, R.counter.w, 18, '#a0927e');
-    for (let i = 0; i < 3; i++) {
-      const cx2 = R.counter.x + 2 + i * 12;
-      px(ctx, cx2, R.counter.y + 8, 8, 14, '#b0a28e');
-      px(ctx, cx2 + 7, R.counter.y + 14, 1, 3, '#8a8070');
-    }
-
-    // 灶台 + 锅
-    px(ctx, R.stove.x, R.stove.y + 2, R.stove.w, 4, '#3a3a44');
-    px(ctx, R.stove.x + 2, R.stove.y + 2, 3, 1, '#55555f');
-    px(ctx, R.stove.x + 7, R.stove.y + 2, 3, 1, '#55555f');
-    px(ctx, R.stove.x + 2, R.stove.y - 4, 5, 3, '#6a6a76');
-    px(ctx, R.stove.x + 1, R.stove.y - 5, 2, 1, '#7a7a86');
-    px(ctx, R.stove.x + 7, R.stove.y - 3, 4, 2, '#8a4a3a');
-    px(ctx, R.stove.x + 8, R.stove.y - 4, 2, 1, '#a05a48');
-
-    // 水槽
-    px(ctx, R.sink.x, R.sink.y + 2, R.sink.w, 3, '#e8e8ec');
-    px(ctx, R.sink.x + 2, R.sink.y + 2, R.sink.w - 4, 1, '#f4f4f8');
-    px(ctx, R.sink.x + 4, R.sink.y - 2, 2, 4, '#c8c8d0');
-
-    // 台面绿植
-    drawPlant(ctx, R.plant.x, R.plant.y, st.season.id);
-
-    // 餐桌 + 凳
-    px(ctx, R.table.x, R.table.y, R.table.w, 3, '#8a5a34');
-    px(ctx, R.table.x, R.table.y + 3, R.table.w, 2, '#9c6a40');
-    px(ctx, R.table.x + 2, R.table.y + 5, 2, 13, '#6e4626');
-    px(ctx, R.table.x + R.table.w - 4, R.table.y + 5, 2, 13, '#6e4626');
-    px(ctx, R.stoolA.x, R.stoolA.y, R.stoolA.w, 2, '#7a5230');
-    px(ctx, R.stoolA.x + 1, R.stoolA.y + 2, 2, 10, '#6e4626');
-    px(ctx, R.stoolB.x, R.stoolB.y, R.stoolB.w, 2, '#7a5230');
-    px(ctx, R.stoolB.x + 1, R.stoolB.y + 2, 2, 10, '#6e4626');
-
-    // 餐桌上的餐盘（早餐/午/晚餐时段有饭）
-    const eating = st.activity && (st.activity.id === 'breakfast' || st.activity.id === 'lunch' || st.activity.id === 'dinner');
-    px(ctx, R.meal.x, R.meal.y + 2, R.meal.w, 2, '#e8e8ec');
-    if (eating) {
-      px(ctx, R.meal.x + 1, R.meal.y, R.meal.w - 2, 2, '#f4e8d0'); // 米饭
-      px(ctx, R.meal.x + 2, R.meal.y - 1, 2, 1, '#e0b060');        // 菜
-      px(ctx, R.meal.x + 5, R.meal.y - 3, 1, 3, '#8a6a4a');        // 筷子
-      // 蒸汽
-      const t = performance.now() / 1000;
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      const s1 = Math.floor(t * 2.5) % 3;
-      ctx.fillRect(R.meal.x + 3, R.meal.y - 4 - s1, 1, 1);
-      ctx.fillRect(R.meal.x + 5, R.meal.y - 5 - ((s1 + 1) % 3), 1, 1);
-    } else {
-      px(ctx, R.meal.x + 1, R.meal.y + 1, 2, 1, '#ffffff'); // 空盘
-    }
-  }
-
-  function drawPlant(ctx, x, y, season) {
-    // 花盆
-    px(ctx, x + 1, y + 8, 5, 2, '#a0522d');
-    px(ctx, x, y + 10, 7, 3, '#8a4423');
-    px(ctx, x + 1, y + 10, 5, 1, '#b5623a');
-    // 叶子
-    const leafCol = season === 'autumn' ? '#c89a3a' : season === 'winter' ? '#5a8a5a' : '#4a9a4a';
-    ctx.fillStyle = leafCol;
-    ctx.fillRect(x + 2, y + 2, 2, 6);
-    ctx.fillRect(x + 4, y, 2, 8);
-    ctx.fillRect(x + 1, y + 3, 1, 4);
-    ctx.fillRect(x + 5, y + 2, 1, 5);
-    // 花（春夏）
-    if (season === 'spring' || season === 'summer') {
-      ctx.fillStyle = season === 'spring' ? '#ff7ba2' : '#ffd23e';
-      ctx.fillRect(x + 4, y - 2, 2, 2);
-      ctx.fillRect(x + 2, y - 1, 1, 1);
-      ctx.fillRect(x + 5, y + 1, 1, 1);
-    }
-  }
-
-  // 季节小物件（空调/风扇/暖气/加湿器）
-  function drawSeasonItems(ctx, st) {
-    const s = st.season.id;
-    const t = performance.now() / 1000;
-    if (s === 'summer') {
-      // 卧室空调
-      const a = FURN.bedroom.acSpot;
-      px(ctx, a.x, a.y, a.w, a.h, '#e8e8ee');
-      px(ctx, a.x, a.y, a.w, 1, '#f8f8fe');
-      for (let i = 0; i < 4; i++) px(ctx, a.x + 2 + i * 3, a.y + 4, 2, 1, '#8a8a96');
-      px(ctx, a.x + 2, a.y + 6, 3, 2, '#7ad8ff');
-      // 工作区风扇
-      const f = FURN.workspace.fanSpot;
-      px(ctx, f.x, f.y + 2, 3, 6, '#5a5a66');
-      px(ctx, f.x + 1, f.y, 1, 3, '#6a6a76');
-      px(ctx, f.x - 1, f.y, 5, 2, '#8a8a96');
-      px(ctx, f.x + 1, f.y - 1 + Math.round(Math.sin(t * 12) * 0.5), 1, 1, '#c0c0cc');
-      // 厨房小风扇（台面）
-      px(ctx, 302, 96, 2, 2, '#8a8a96');
-    } else if (s === 'winter') {
-      // 卧室暖气
-      const h = FURN.bedroom.heaterSpot;
-      px(ctx, h.x, h.y, h.w, h.h, '#c86a5a');
-      for (let i = 0; i < 5; i++) px(ctx, h.x + 2 + i * 2, h.y + 2, 1, h.h - 4, '#e08070');
-      px(ctx, h.x + 1, h.y, h.w - 2, 1, '#e89a8a');
-      // 工作区加湿器
-      const u = FURN.workspace.humidSpot;
-      px(ctx, u.x, u.y + 6, u.w, u.h - 6, '#8ac8d8');
-      px(ctx, u.x, u.y + 8, u.w, 1, '#a0d8e8');
-      ctx.fillStyle = 'rgba(200,240,255,0.85)';
-      px(ctx, u.x + 2, u.y + 4 - (Math.floor(t * 3) % 3), 1, 1);
-      px(ctx, u.x + 4, u.y + 2 - (Math.floor(t * 3 + 1) % 3), 1, 1);
-      px(ctx, u.x + 6, u.y + 4 - (Math.floor(t * 3 + 2) % 3), 1, 1);
-      // 厨房保温壶
-      px(ctx, 256, 106, 3, 4, '#b0503a');
-      px(ctx, 257, 104, 1, 2, '#c0604a');
-    } else {
-      // 春秋：卧室窗台外花 + 厨房植物已画
-      if (s === 'spring') {
-        px(ctx, 74, 92, 2, 2, '#ff7ba2');
-        px(ctx, 75, 90, 1, 1, '#ffb0c4');
-      }
-    }
-  }
-
-  function drawCeilingLamp(ctx, roomIdx) {
-    const lx = FURN[C.ROOM_IDS[roomIdx]].ceilingLamp.x;
-    const on = lampOn('ceiling', roomIdx);
-    px(ctx, lx - 1, CEIL, 2, 6, '#6a6268');
-    px(ctx, lx - 5, CEIL + 6, 10, 5, on ? '#ffe9b0' : '#cfc8c0');
-    px(ctx, lx - 3, CEIL + 11, 6, 3, on ? '#fff6d8' : '#b0aaa2');
-  }
+  // 供内部使用的 lampOn（避免与模块导出对象冲突）
+  function lampOnF(kind) { return lampOn(kind); }
 
   P.RoomLayout = {
     windows: windows,
@@ -720,6 +1379,7 @@
     hits: hits,
     monitorRect: monitorRect,
     drawHouse: drawHouse,
+    drawDynamic: drawDynamic,
     drawMonitorContent: drawMonitorContent,
     drawWindowBackdrop: P.Lighting ? P.Lighting.drawWindowBackdrop : null
   };

@@ -180,6 +180,13 @@
   // 绘制
   // ============================================================
   function px(ctx, x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+  function shadeCat(hex, f) {
+    const n = parseInt(hex.slice(1), 16);
+    let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    if (f < 0) { const k = 1 + f; r *= k; g *= k; b *= k; }
+    else { r += (255 - r) * f; g += (255 - g) * f; b += (255 - b) * f; }
+    return 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ')';
+  }
 
   function draw(ctx, st) {
     if (!cat) return;
@@ -231,8 +238,13 @@
     px(ctx, x - 1, y - 2, 2, 2, pal.body);       // 前爪
     px(ctx, x - 4, y - 6, 2, 2, pal.body);       // 尾巴
     px(ctx, x - 5, y - 7, 1, 1, pal.dark);
-    // 条纹
+    // 条纹 + 毛发斑点
     px(ctx, x - 1, y - 6, 2, 1, pal.stripe);
+    px(ctx, x - 3, y - 7, 1, 1, pal.stripe);
+    px(ctx, x + 1, y - 4, 1, 1, pal.dark);
+    px(ctx, x - 2, y - 3, 1, 1, pal.stripe);
+    // 头顶高光
+    px(ctx, x - 1, y - 8, 2, 1, shadeCat(pal.body, 0.25));
   }
 
   function drawWalk(ctx, x, y, t, pal, d) {
@@ -255,6 +267,10 @@
     const sway = Math.round(Math.sin(t * 10) * 2);
     px(ctx, x - 7, y - 5 + sway, 2, 2, pal.body);
     px(ctx, x - 8, y - 6 + sway, 1, 1, pal.dark);
+    // 背毛斑点
+    px(ctx, x - 2, y - 4, 1, 1, pal.stripe);
+    px(ctx, x + 1, y - 5, 1, 1, pal.dark);
+    px(ctx, x - 5, y - 5, 1, 1, pal.stripe);
   }
 
   function drawSleep(ctx, x, y, t, pal, d) {
@@ -265,6 +281,10 @@
     px(ctx, x + (d > 0 ? 6 : -7), y - 5, 1, 1, pal.stripe);
     px(ctx, x - 6, y - 3, 2, 2, pal.body);       // 尾巴环抱
     px(ctx, x - 6, y - 2, 3, 1, pal.dark);
+    // 背毛纹理
+    px(ctx, x - 1, y - 4, 1, 1, pal.stripe);
+    px(ctx, x + 1, y - 3, 1, 1, pal.dark);
+    px(ctx, x - 4, y - 5, 1, 1, pal.stripe);
     // zzz
     if (Math.floor(t * 1.5) % 2 === 0) {
       ctx.fillStyle = '#cfd6e8';
@@ -304,6 +324,10 @@
     px(ctx, x + hx + 3, y - 12 + bob, 1, 1, pal.stripe);
     px(ctx, x - 1, y - 5, 2, 2, pal.belly);       // 舔爪
     px(ctx, x - 4, y - 5, 2, 2, pal.body);        // 尾巴
+    // 毛纹
+    px(ctx, x + 1, y - 6, 1, 1, pal.stripe);
+    px(ctx, x - 2, y - 7, 1, 1, pal.dark);
+    px(ctx, x - 5, y - 6, 1, 1, pal.stripe);
   }
 
   function drawRub(ctx, x, y, t, pal, d) {
