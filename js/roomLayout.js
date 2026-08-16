@@ -68,6 +68,8 @@
       plant: { x: 312, y: 92, w: 7, h: 16 },
       meal: { x: 250, y: 104, w: 7, h: 6 },
       bowlSpot: { x: 305, y: 124, w: 5, h: 3 },   // 猫粮碗（厨房角落地面）
+      dogBed: { x: 286, y: 124, w: 12, h: 4 },    // 狗窝（厨房角落地面，与猫粮碗分开）
+      dogBowl: { x: 300, y: 124, w: 5, h: 3 },    // 狗粮碗
       pkgSpot: { x: 310, y: 118, w: 7, h: 7 },    // 快递箱（门口/墙边）
       ceilingLamp: { x: 280 }
     }
@@ -1506,6 +1508,50 @@
     }
   }
 
+  // 狗窝（厨房角落地面；腊肠狗蜷在上面睡觉）
+  function drawDogBed(ctx, st) {
+    const B = FURN.kitchen.dogBed; // (286,124,12,4)
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(B.x - 1, B.y + 4, B.w + 2, 1);
+    // 外沿（红棕）
+    px(ctx, B.x, B.y, B.w, B.h, '#b0605a');
+    px(ctx, B.x, B.y, B.w, 1, '#d0806a');
+    px(ctx, B.x, B.y, 1, B.h, '#c86a5a');
+    px(ctx, B.x + B.w - 1, B.y, 1, B.h, '#8a4a3a');
+    // 内垫（浅色）
+    px(ctx, B.x + 1, B.y + 1, B.w - 2, B.h - 1, '#d8907a');
+    px(ctx, B.x + 2, B.y + 2, B.w - 4, 1, '#e8a890');
+    // 缝线点
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(B.x + 3, B.y + 3, 1, 1);
+    ctx.fillRect(B.x + 7, B.y + 3, 1, 1);
+  }
+
+  // 狗粮碗（厨房角落地面；余粮随狗进食减少，次日续满）
+  function drawDogBowl(ctx, st) {
+    const it = P.Storage.state.items || {};
+    const B = FURN.kitchen.dogBowl; // (300,124,5,3)
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(B.x - 1, B.y + 3, B.w + 2, 1);
+    // 碗（红色，与猫碗区分）
+    px(ctx, B.x, B.y, B.w, 2, '#c85a4a');
+    px(ctx, B.x, B.y, B.w, 1, '#e07060');
+    px(ctx, B.x + 1, B.y + 2, B.w - 2, 2, '#a04838');
+    px(ctx, B.x, B.y + 3, B.w, 1, '#8a3a2a');
+    // 狗粮（3=满 2=半 1=少 0=空）
+    const food = it.dogBowl || 0;
+    if (food >= 1) {
+      px(ctx, B.x + 1, B.y - 1, 3, 1, '#8a5a2a');
+      if (food >= 2) {
+        px(ctx, B.x + 1, B.y - 2, 3, 1, '#a07038');
+        if (food >= 3) {
+          px(ctx, B.x, B.y - 2, 5, 1, '#b88248');
+          px(ctx, B.x + 2, B.y - 3, 1, 1, '#6a4020');
+        }
+      }
+    }
+  }
+
   // 快递箱（门口/墙边；几天后被拆开消失）
   function drawPackage(ctx, st) {
     const pkg = (P.Storage.state.items || {}).pkg || {};
@@ -1565,6 +1611,8 @@
 
   function drawItemObjects(ctx, st) {
     drawCatBowl(ctx, st);
+    drawDogBed(ctx, st);
+    drawDogBowl(ctx, st);
     drawPackage(ctx, st);
     drawOpenedItem(ctx, st);
   }

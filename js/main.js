@@ -35,6 +35,7 @@
     window.addEventListener('resize', fitSceneSize);
     P.Character.init();
     P.Cat.init();
+    P.Dog.init();
     P.WeatherEffects.init();
     P.Audio.init();
     P.Interaction.init(canvas);
@@ -57,6 +58,7 @@
     P.Character.update(dt);
     if (P.Lighting && P.Lighting.checkAutoLights) P.Lighting.checkAutoLights();
     P.Cat.update(dt);
+    P.Dog.update(dt);
     P.WeatherEffects.update(dt);
     P.UI.update(dt);
     // 低频更新环境音与天气刷新

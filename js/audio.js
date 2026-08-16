@@ -218,6 +218,26 @@
       o.connect(f); f.connect(g); g.connect(master);
       o.start(t0); o.stop(t0 + 0.6);
     },
+    bark: function () {
+      if (!actx || !enabled || !master) return;
+      // 两声短促低吼 + 尾音（腊肠狗的"汪汪"）
+      const t0 = actx.currentTime;
+      const mk = function (dt, f0, f1, vol) {
+        const o = actx.createOscillator(); o.type = 'square';
+        o.frequency.setValueAtTime(f0, t0 + dt);
+        o.frequency.exponentialRampToValueAtTime(f1, t0 + dt + 0.11);
+        const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 750; f.Q.value = 1.5;
+        const g = actx.createGain();
+        g.gain.setValueAtTime(0, t0 + dt);
+        g.gain.linearRampToValueAtTime(vol, t0 + dt + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dt + 0.13);
+        o.connect(f); f.connect(g); g.connect(master);
+        o.start(t0 + dt); o.stop(t0 + dt + 0.16);
+      };
+      mk(0, 340, 250, 0.09);
+      mk(0.24, 300, 220, 0.09);
+      mk(0.48, 420, 360, 0.05);
+    },
     purrStart: function () {
       if (!actx || !enabled || purrNodes) return;
       const t0 = actx.currentTime;

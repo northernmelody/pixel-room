@@ -309,3 +309,46 @@ GitHub 仓库：https://github.com/northernmelody/pixel-room
 | Commit | 说明 |
 | --- | --- |
 | 7d88fc4 | feat: 功能迭代（冰箱/餐桌/厕所/猫行为/连锁交互/物品动态变化）+ 存档引用修复 + 交接文档 |
+
+## 12. 腊肠狗（2026-08，js/dog.js）
+
+> 需求：房间里增加一只腊肠狗（长身体、短腿、大耳朵、摇尾巴、爱跟人、会叫）。
+> 新增文件：js/dog.js（独立行为系统，参照 cat.js 架构）。无外部素材。
+
+### 12.1 新增/修改文件
+| 文件 | 改动 |
+| --- | --- |
+| js/dog.js | **新增**：腊肠狗状态机 + 像素绘制 |
+| index.html | cat.js 后引入 dog.js |
+| js/main.js | init/update 接入 P.Dog |
+| js/renderer.js | draw 接入 P.Dog（小人/猫后）；静态缓存签名加 `dogBowl` |
+| js/roomLayout.js | 厨房新增 狗窝(286,124,12,4) + 狗粮碗(300,124,5,3) 静态绘制 |
+| js/interaction.js | 点击狗：首次叫、4s 内再点跟随（判定 ±14px × FLOOR-20） |
+| js/audio.js | 新增 `bark()`（两声低吼+尾音，WebAudio 程序化） |
+| js/storage.js | items.dogBowl（狗粮碗 0-3，次日续满）+ dogSeed（毛色种子，现为冗余保留） |
+
+> 配色：**已锁定棕色**（用户手动锁定，`PALETTES` 精简为单一棕色，与猫锁定橘色同例；
+> `dogSeed`/`PALETTES[seed % len]` 逻辑保留，恒取棕色）。
+
+### 12.2 行为状态机（9 态，带权随机切换）
+- idle / wander / sleep（走回狗窝蜷着睡，画 Zzz）/ eat（走到碗边低头嚼，扣 dogBowl）
+- zoomies（26px/s 狂奔）/ follow（跟在小人身后一侧）/ bark（张嘴+声波+叫声）
+- scratch（原地刨地）/ sit（坐着抬头看，尾巴贴地摆）
+- 夜晚（小人 sleep 时段）睡眠权重 +26，其余权重大幅下调；
+- 狗粮碗空则不再触发 eat；狗始终限制在 x∈[12,308]。
+
+### 12.3 绘制要点
+- 站姿：20px 长身 + 4 条 3px 短腿（走路交替摆动+上下微颠）+ 大垂耳 + 长嘴口鼻 + 红项圈金牌 + 摇尾；
+- 姿态变体：eat 低头到碗沿 / bark 抬头张嘴+舌头+波纹；
+- 睡觉：蜷成一团窝在狗窝里（背拱 + 埋头的头 + 卷尾 + Zzz 上浮）；
+- 朝向：dir<0 时以狗为中心 scale(-1,1) 镜像（同猫）；draw 开头重置 globalAlpha=1；
+- 进食时碗重绘在狗身前保证可见（同猫的做法）。
+
+### 12.4 验证
+- `node --check` 15 个 JS 全部通过；
+- Node VM 冒烟测试 `_tools/smoke-dog.js`：9 态全部可达、逐态 draw 无异常、
+  eat 扣粮 3→2、interact 首次 bark / 再点 follow、跟随会移动、夜晚倾向睡、空碗不扣负、不出界；
+- Chrome headless 实测（`_shots/dog-day.png` / `dog-night.png`）：
+  - 白天厨房可见腊肠狗本体（棕 #8B5A2B 像素簇 x≈278-307）+ 狗窝/狗粮碗/猫碗同排；
+  - 夜间 t=23:00 狗蜷在狗窝（窝区整体变暗 rgb≈60，与白天窝色 #b89f80 对比明显）；
+  - 页面无 JS 控制台错误（仅 Chrome 自身沙箱警告）。

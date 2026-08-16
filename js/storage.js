@@ -16,12 +16,14 @@
     petToday: 0,
     settings: { particles: true, stars: true, anim: true },
     catSeed: (Math.random() * 5) | 0,
+    dogSeed: (Math.random() * 3) | 0,   // 腊肠狗毛色（0 棕 / 1 黑 / 2 奶油）
     // ---- 物品动态变化（按日期记录，跨天自动更新）----
     items: {
       date: '',             // 最近一次跨天更新日期 yyyy-mm-dd
       cup: 0,               // 咖啡杯液面 0-4（工作前满杯）
       blanket: 'cover',     // 被子：cover 睡觉盖身 / made 睡前铺好 / messy 白天乱糟糟
       bowl: 3,              // 猫粮碗 0-3（3=满）
+      dogBowl: 3,           // 狗粮碗 0-3（3=满）
       dishes: 0,            // 水槽里的碗 0/1
       pkg: { state: 'none', date: '', openIn: 0, item: null } // 快递箱 none/arrived/opened
     }
@@ -64,8 +66,9 @@
     const today = dateKey(tp);
     const items = state.items;
     if (items.date === today) return;
-    // 猫粮碗：第二天早上自动续满
+    // 猫粮碗/狗粮碗：第二天早上自动续满
     items.bowl = 3;
+    items.dogBowl = 3;
     // 快递箱：偶尔出现（平均每周 1-2 次），几天后被拆开
     const pkg = items.pkg;
     if (pkg.state === 'none') {

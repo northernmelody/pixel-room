@@ -65,6 +65,13 @@
       if (P.UI) P.UI.toast('🐱 喵～ 摸到猫了！');
       return;
     }
+    // 狗（腊肠狗：首次点叫一声，4 秒内再点则跟上小人）
+    const dp = P.Dog.pos();
+    if (Math.abs(p.x - dp.x) <= 14 && p.y >= FLOOR - 20 && p.y <= FLOOR + 2) {
+      const act = P.Dog.interact();
+      if (P.UI) P.UI.toast(act === 'follow' ? '🐶 汪汪！腊肠狗跟上你啦～' : '🐶 汪！腊肠狗叫了一声');
+      return;
+    }
     // 灯
     const regions = P.RoomLayout.hits();
     for (let i = 0; i < regions.length; i++) {

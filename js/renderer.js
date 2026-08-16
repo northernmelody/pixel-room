@@ -45,7 +45,7 @@
     const perch = P.Cat.perchId ? (P.Cat.perchId() || '') : '';
     return st.season.id + '|' + lampState + '|' + (P.Storage.state.settings.anim ? '1' : '0') +
       '|' + (it.cup != null ? it.cup : '') + '|' + (it.blanket || '') +
-      '|' + (it.bowl != null ? it.bowl : '') + '|' + (it.dishes || 0) +
+      '|' + (it.bowl != null ? it.bowl : '') + '|' + (it.dogBowl != null ? it.dogBowl : '') + '|' + (it.dishes || 0) +
       '|' + (pkg.state || '') + '|' + (pkg.item || '') + '|' + meal + '|' + perch;
   }
 
@@ -74,7 +74,9 @@
     P.Character.draw(ctx, st);
     // 5) 猫（z=2）
     P.Cat.draw(ctx, st);
-    // 6) 雨雪粒子
+    // 6) 腊肠狗（z=2）
+    P.Dog.draw(ctx, st);
+    // 7) 雨雪粒子
     P.WeatherEffects.draw(ctx, st);
     // 7) 室内光照叠加（光斑/冷光/灯晕/暗角）
     P.Lighting.applyInterior(ctx, st);
