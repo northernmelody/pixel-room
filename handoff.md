@@ -171,3 +171,44 @@ GitHub 仓库：https://github.com/northernmelody/pixel-room
 | --- | --- |
 | cd73248 | 界面修复（肤色/头部/猫/屏幕条纹）+ 自动关灯 + 回滚小人尺寸 + 本交接文档 |
 | fb522ff | 回滚猫尺寸 + 锁定橘猫配色 + 交接文档更新 |
+
+## 9. UI 响应式缩放（2026-08）
+
+> 问题：Canvas 随屏幕缩放，但 HTML UI（时间卡片/按钮）用固定 px，手机上显得过大、遮挡画面。
+
+### 方案（css/style.css，纯 CSS 改动，JS 无内联样式无需动）
+
+1. **根字号 = UI 缩放基准**：`html { font-size: 16px }`，断点 `≤768px → 12px`、`≤480px → 10px`；
+   横屏手机守卫 `@media (max-height: 500px) and (max-width: 900px) → 12px`。
+2. **全部 UI 元素改用 rem**：`.ui-panel`（padding/圆角）、`#time-ui`（top/left/min-width）、
+   `.time-main`/`.time-sub`、`#top-right`/`.icon-btn`、`#settings-panel`、`#computer-modal`/`.modal-box`、
+   `#toast` 均随根字号等比缩放。桌面（≥768px 宽）视觉与旧版完全一致。
+3. **手机（≤480px）微调**：时间卡片 `min-width` 216px→10rem、背景改半透明
+   `rgba(8,12,24,0.45)`、隐藏 `#local-time` 行（只留主时间+作息行）；设置面板铺满宽度；
+   电脑弹窗 padding 收紧。
+4. **溢出保护**：`#time-ui` 加 `max-width: calc(100% - 1rem)`，`.time-sub` 加
+   `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`。
+
+### Canvas 缩放检查（无需改动）
+
+- `main.js fitSceneSize()`：按视口取 `min(100vw-24, (100vh-24)*16/9)` 并取整到 PIXEL(4) 整数倍，resize 重算。
+- `renderer.js`：内部固定 1280×720（逻辑 320×180），CSS 缩放由 `#scene-wrap` 处理。
+- 实测各视口画布均保持 16:9 且像素对齐。
+
+### 验证（agent-browser 实测计算样式 + 截图，见 `_shots/ui-*.png`）
+
+| 视口 | 根字号 | 画布 | 时间卡片 | 图标按钮 |
+| --- | --- | --- | --- | --- |
+| 1600×900 桌面 | 16px（=100%） | 1556×872 | 26px 字体 / 312×95（与旧版一致） | 40×40 |
+| 768×1024 平板 | 12px（75%） | 744×416 | 19.5px / 234×72 | 30×30 |
+| 667×375 横屏手机 | 12px（守卫） | 624×348 | 19.5px / 234×72 | 30×30 |
+| 375×667 手机 | 10px（62.5%） | 348×196 | 16.25px / 196×48（旧版 312×95=画布宽 90%） | 25×25 |
+
+- 375px 下卡片/按钮全部在画布内，卡片不遮挡床/工作区区域（几何断言通过）；
+- 设置面板手机端铺满宽度（341×146）且在按钮下方；电脑弹窗 345×247、内置画布 304×190（8:5）正常；
+- 手机端 `#local-time` 隐藏生效，平板/桌面保留。
+
+### 可选后续（本次未做）
+
+- 手机上默认只显示时间、点击展开完整信息（需 JS 交互）；
+- 10 秒无操作自动淡出时间卡片（需 JS 计时器）。
