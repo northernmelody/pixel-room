@@ -243,7 +243,17 @@
     ctx.fillStyle = 'rgba(0,0,0,0.15)';
     ctx.fillRect(x - 8, FLOOR - 1, 18, 2);
 
-    drawCat(ctx, x - 7, y - 10, d, pal, c.state);
+    // 向左移动：水平镜像前进动画（镜像轴取整数 x，保持像素对齐），避免“倒退”感
+    if (d < 0) {
+      ctx.save();
+      ctx.translate(x, 0);
+      ctx.scale(-1, 1);
+      ctx.translate(-x, 0);
+      drawCat(ctx, x - 7, y - 10, d, pal, c.state);
+      ctx.restore();
+    } else {
+      drawCat(ctx, x - 7, y - 10, d, pal, c.state);
+    }
 
     // 心情爱心
     if (c.moodT > 0) {

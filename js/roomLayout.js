@@ -1305,7 +1305,12 @@
           px(ctx, x + 6, ly, len, 1, col);
           if (n % 3 === 0) px(ctx, x + 6, ly + 1, 2, 1, '#4a5468');
         }
-        if (Math.floor(t * 2) % 2 === 0) px(ctx, x + 10, y + 8 + (Math.floor(t * 3) % 12) * 4, 1, 4, '#ffffff');
+        if (Math.floor(t * 2) % 2 === 0) {
+          // 光标：按屏幕高度限制位置，避免在小屏上落到屏幕外
+          const cN = Math.max(1, Math.min(12, Math.floor((h - 12) / 4)));
+          const cy = y + 8 + (Math.floor(t * 3) % cN) * 4;
+          if (cy + 4 <= y + h) px(ctx, x + 10, cy, 1, 4, '#ffffff');
+        }
         break;
       }
       case 'video': {
@@ -1326,28 +1331,35 @@
       }
       case 'chat': {
         px(ctx, x, y + 4, w, h - 4, '#10141f');
-        for (let i = 0; i < 5; i++) {
+        // 气泡数量随屏幕高度自适应（小屏不溢出）
+        const bn = Math.min(5, Math.max(1, Math.floor((h - 10) / 4)));
+        for (let i = 0; i < bn; i++) {
           const at = ((t * 0.6 + i * 0.7) % 5);
           const mw = [10, 14, 8, 12, 9][i];
+          const bw = Math.min(mw, Math.max(4, w - 8)); // 小屏限宽
           if (at > 0.15) {
             const my = Math.floor(y + 8 + i * 4);
             if (i % 2 === 0) {
-              px(ctx, x + 3, my, mw, 3, '#2a3a5e');
+              px(ctx, x + 3, my, bw, 3, '#2a3a5e');
               px(ctx, x + 3, my + 3, 2, 1, '#2a3a5e');
             } else {
-              px(ctx, x + w - 3 - mw, my, mw, 3, '#3e5a34');
-              px(ctx, x + w - 5 - mw, my + 3, 2, 1, '#3e5a34');
+              px(ctx, x + w - 3 - bw, my, bw, 3, '#3e5a34');
+              px(ctx, x + w - 5 - bw, my + 3, 2, 1, '#3e5a34');
             }
           }
         }
-        px(ctx, x + 2, y + h - 5, w - 4, 3, '#1d2330');
-        if (Math.floor(t * 2) % 2 === 0) px(ctx, x + 3, y + h - 4, 2, 1, '#cfd6e8');
+        // 输入框：仅当高度足够时绘制（小屏省略）
+        if (h >= 20) {
+          px(ctx, x + 2, y + h - 5, w - 4, 3, '#1d2330');
+          if (Math.floor(t * 2) % 2 === 0) px(ctx, x + 3, y + h - 4, 2, 1, '#cfd6e8');
+        }
         break;
       }
       case 'slacking': {
         px(ctx, x, y + 4, w, h - 4, '#0f1220');
-        const fx = Math.floor(x + (((t * 6) % (w + 8)) | 0) - 4);
-        const fy = Math.floor(y + Math.round(h / 2) - 5);
+        // 狐狸位置限制在屏幕内（小屏不落到屏幕外/上方）
+        const fx = Math.max(x + 3, Math.min(Math.floor(x + (((t * 6) % (w + 8)) | 0) - 4), x + w - 5));
+        const fy = Math.max(y + 6, Math.min(Math.floor(y + Math.round(h / 2) - 5), y + h - 4));
         ctx.fillStyle = '#ffb03a';
         px(ctx, fx, fy, 3, 2);
         px(ctx, fx - 1, fy + 1, 5, 2);

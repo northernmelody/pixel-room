@@ -1,0 +1,5 @@
+# Vercel 部署忽略：开发/文档/截图 不随应用上传
+.git
+_shots
+_tools
+handoff.md
