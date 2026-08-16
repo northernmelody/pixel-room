@@ -28,6 +28,24 @@
     leisure:   { room: 0, x: 27,  pose: 'leisure' }
   };
 
+  // ---- 休闲活动（19:00-22:00 子状态机）----
+  // 位置：game 工作区电脑前 / read 床边 / exercise 工作区空处（书架前）
+  //       play_cat 工作区空处 / look_out 卧室窗边 / phone 床边
+  const LEISURE_SPOTS = {
+    game:     { room: 1, x: 147, dir: -1 },  // 面朝电脑（显示器在左侧）
+    read:     { room: 0, x: 27,  dir: 1  },   // 床边
+    exercise: { room: 1, x: 96,  dir: 1  },   // 书架前空地
+    play_cat: { room: 1, x: 99,  dir: 1  },   // 空地逗猫
+    look_out: { room: 0, x: 63,  dir: -1 },   // 窗边面朝窗外
+    phone:    { room: 0, x: 27,  dir: 1  }    // 床边
+  };
+  const LEISURE_NAMES = {
+    game: '打游戏', read: '看书', exercise: '健身',
+    play_cat: '逗猫', look_out: '发呆看窗外', phone: '玩手机'
+  };
+  // 调试加速：?leisurefast 让休闲活动时长缩至 1/50（便于观察切换）
+  const LEISURE_SCALE = (typeof location !== 'undefined' && /[?&]leisurefast/.test(location.search)) ? 0.02 : 1;
+
   // 每餐随机食物
   const MEAL_FOODS = {
     breakfast: ['baozi', 'bread', 'noodles', 'egg'],
@@ -72,7 +90,18 @@
       mealFood: null,        // 当前餐食物类型
       washSeq: (act === 'wash' && washPhase !== 'shower') ? 0 : null,   // 洗漱流程步
       washT: 0,
-      react: null            // 点击反应 {type,t}
+      react: null,           // 点击反应 {type,t}
+      // ---- 休闲活动 ----
+      leisureAct: null,      // 当前休闲活动 id（null=未开始）
+      leisureT: -1,          // 当前活动剩余秒数（<0 = 刚到达未开始）
+      leisureSub: null,      // 活动子状态（read 翻页 / look_out 抬头 / exercise 动作 / phone 姿势）
+      leisureSubT: 0,        // 子状态计时
+      phoneNext: null,       // phone 待切换姿势（先坐起过渡）
+      arriveT: 0,            // 到达后坐下过渡计时
+      // ---- 夜间活动 ----
+      nightPlan: null,       // 本夜活动计划 {items:[{atMin,type}], idx}
+      nightAct: null,        // 当前夜间活动 null|toilet|drink|snack|phoneToss
+      nightActT: 0
     };
     screenMode = pickScreen();
     screenTimer = 8 + Math.random() * 12;
@@ -127,6 +156,211 @@
     }
   }
 
+  // ============================================================
+  // 休闲活动子状态机（19:00-22:00）
+  // ============================================================
+
+  // 带权随机选择下一项活动（不能与当前相同；21:30 后健身概率降至 5%；
+  // 猫睡觉时不会选 play_cat，其权重转给 read/phone）
+  function pickLeisure() {
+    const tp = P.Time.now();
+    const h = tp.hour;
+    let exW = 26;                       // 19:00-21:00 健身概率高
+    if (h >= 21.5) exW = 5;
+    else if (h >= 21) exW = 12;
+    const catSleep = P.Cat && P.Cat.isSleeping ? P.Cat.isSleeping() : false;
+    const w = {
+      game: 20, read: 18, exercise: exW,
+      play_cat: catSleep ? 0 : 16,
+      look_out: 7, phone: 18
+    };
+    if (catSleep) { w.read += 8; w.phone += 8; }   // 猫睡觉 → 改为 read 或 phone
+    if (char.leisureAct && w[char.leisureAct] !== undefined) w[char.leisureAct] = 0;
+    let total = 0;
+    for (const k in w) total += w[k];
+    let roll = Math.random() * total;
+    for (const k in w) { roll -= w[k]; if (roll <= 0) return k; }
+    return 'read';
+  }
+
+  // 活动时长：look_out 10-30 秒；其余 5-20 分钟（可调试加速）
+  function leisureDuration(id) {
+    if (id === 'look_out') return (10 + Math.random() * 20) * LEISURE_SCALE;
+    return (5 + Math.random() * 15) * 60 * LEISURE_SCALE;
+  }
+
+  // 开始一项活动：走到对应区域（不瞬移），到达后开始计时
+  function goToLeisure(id) {
+    if (char.leisureAct === 'play_cat' && P.Cat && P.Cat.endPlay) P.Cat.endPlay();
+    char.leisureAct = id;
+    char.leisureT = -1;                 // 标记"尚未到达开始"
+    char.leisureSub = null; char.leisureSubT = 0;
+    char.phoneNext = null;
+    const sp = LEISURE_SPOTS[id];
+    char.target = { room: sp.room, x: sp.x, pose: id };
+    char.moving = true;
+  }
+
+  // 进入活动后的初始子状态
+  function initLeisureSub(id) {
+    switch (id) {
+      case 'read':     char.leisureSub = 'open'; char.leisureSubT = 3 + Math.random() * 2; break;
+      case 'look_out': char.leisureSub = 'look'; char.leisureSubT = 5 + Math.random() * 3; break;
+      case 'exercise': char.leisureSub = pickRoutine(null); char.leisureSubT = 30 + Math.random() * 30; break;
+      case 'phone':    char.leisureSub = 'sit'; char.leisureSubT = 120 + Math.random() * 60; break;
+      default:         char.leisureSub = null; char.leisureSubT = 0; break;
+    }
+  }
+
+  // 健身动作随机（不连续重复）
+  function pickRoutine(cur) {
+    const list = ['squat', 'pushup', 'jumpjack'];
+    const rest = list.filter(function (r) { return r !== cur; });
+    return rest[(Math.random() * rest.length) | 0];
+  }
+  // 手机姿势随机（不连续重复）
+  function pickPhonePosture(cur) {
+    const list = ['sit', 'lie', 'prone'];
+    const rest = list.filter(function (p) { return p !== cur; });
+    return rest[(Math.random() * rest.length) | 0];
+  }
+
+  // 子状态推进：翻页 / 抬头 / 动作轮换 / 姿势切换
+  function updateLeisureSub(dt) {
+    char.leisureSubT -= dt;
+    if (char.leisureSubT > 0) return;
+    switch (char.leisureAct) {
+      case 'read':
+        if (char.leisureSub === 'flip') { char.leisureSub = 'open'; char.leisureSubT = 3 + Math.random() * 2; }
+        else { char.leisureSub = 'flip'; char.leisureSubT = 0.5; }
+        break;
+      case 'look_out':
+        if (char.leisureSub === 'lift') { char.leisureSub = 'look'; char.leisureSubT = 5 + Math.random() * 3; }
+        else { char.leisureSub = 'lift'; char.leisureSubT = 1.5; }
+        break;
+      case 'exercise':
+        char.leisureSub = pickRoutine(char.leisureSub);
+        char.leisureSubT = 30 + Math.random() * 30;
+        break;
+      case 'phone': {
+        if (char.phoneNext) {
+          char.leisureSub = char.phoneNext;
+          char.leisureSubT = 120 + Math.random() * 60;
+          char.phoneNext = null;
+        } else {
+          // 先坐起 0.6s 作为过渡，再躺下/趴下
+          char.phoneNext = pickPhonePosture(char.leisureSub);
+          char.leisureSub = 'sit';
+          char.leisureSubT = 0.6;
+        }
+        break;
+      }
+    }
+  }
+
+  // 休闲主逻辑：切换活动（走到对应位置）→ 计时 → 结束随机换下一项
+  function leisureUpdate(dt) {
+    if (!char.leisureAct) {
+      goToLeisure(pickLeisure());
+      return;
+    }
+    if (!char.moving && char.pose !== 'walk') {
+      if (char.leisureT < 0) {
+        // 刚到达：开始活动
+        char.leisureT = leisureDuration(char.leisureAct);
+        initLeisureSub(char.leisureAct);
+        if (char.leisureAct === 'play_cat' && P.Cat && P.Cat.playWithHuman) P.Cat.playWithHuman();
+      } else {
+        char.leisureT -= dt;
+        if (char.leisureT <= 0) goToLeisure(pickLeisure());
+      }
+    }
+    updateLeisureSub(dt);
+  }
+
+  // ============================================================
+  // 夜间活动（睡觉中偶尔起夜，70% 概率整夜无活动）
+  // ============================================================
+
+  // 本夜活动计划：30% 概率生成 1-3 个活动，类型按权重
+  // 上厕所 20% / 喝水 15% / 吃夜宵 10% / 玩手机翻身 30%（其余 25% 无事）
+  function makeNightPlan() {
+    if (Math.random() < 0.7) return { items: [], idx: 0 };
+    const n = 1 + ((Math.random() * 3) | 0);
+    const items = [];
+    for (let i = 0; i < n; i++) {
+      let roll = Math.random() * 75;
+      let type = 'toilet';
+      if ((roll -= 20) <= 0) type = 'toilet';
+      else if ((roll -= 15) <= 0) type = 'drink';
+      else if ((roll -= 10) <= 0) type = 'snack';
+      else type = 'phoneToss';
+      // 活动时刻用"入睡后经过的分钟数"（入睡 = 22.5），天然跨零点：
+      // 23:12 ~ 次日 06:48 对应 42 ~ 498 分钟
+      const h = 23.2 + Math.random() * 7.6;
+      items.push({ atElapsed: (h - 22.5) * 60, type: type });
+    }
+    items.sort(function (a, b) { return a.atElapsed - b.atElapsed; });
+    return { items: items, idx: 0 };
+  }
+
+  function startNightAct(type) {
+    char.nightAct = type;
+    switch (type) {
+      case 'toilet':
+        char.target = { room: 2, x: 212, pose: 'toilet' };
+        char.nightActT = 45 + Math.random() * 45;
+        break;
+      case 'drink':
+        char.target = { room: 3, x: 262, pose: 'breakDrink' };
+        char.nightActT = 30 + Math.random() * 40;
+        break;
+      case 'snack':
+        char.target = { room: 3, x: 248, pose: 'eat' };
+        char.nightActT = 60 + Math.random() * 60;
+        break;
+      case 'phoneToss':
+        // 留在床上玩手机/翻身
+        char.nightActT = 120 + Math.random() * 180;
+        break;
+    }
+    char.moving = true;
+  }
+
+  function nightUpdate(dt) {
+    const tp = P.Time.now();
+    if (char.activity === 'sleep') {
+      if (char.nightPlan === null) char.nightPlan = makeNightPlan();
+      if (char.nightAct === null && char.pose === 'sleep') {
+        const plan = char.nightPlan;
+        if (plan && plan.idx < plan.items.length) {
+          const it = plan.items[plan.idx];
+          // 入睡(22.5)后经过的分钟数（跨零点加 24h）
+          let elapsed = tp.hour - 22.5;
+          if (elapsed < 0) elapsed += 24;
+          if (elapsed * 60 >= it.atElapsed) {
+            plan.idx++;
+            startNightAct(it.type);
+          }
+        }
+      }
+    }
+    if (char.nightAct) {
+      if (char.nightAct === 'phoneToss') {
+        char.nightActT -= dt;
+        if (char.nightActT <= 0) char.nightAct = null;   // 直接继续睡
+      } else if (!char.moving && char.pose !== 'walk') {
+        char.nightActT -= dt;
+        if (char.nightActT <= 0) {
+          char.nightAct = null;
+          // 回到床上继续睡（不影响 07:30 起床）
+          char.target = { room: 0, x: 24, pose: 'sleep' };
+          char.moving = true;
+        }
+      }
+    }
+  }
+
   function update(dt) {
     if (!char) return;
     const tp = P.Time.now();
@@ -142,10 +376,21 @@
 
     // 活动切换 → 新的目标
     if (act !== char.activity) {
+      const prev = char.activity;
       char.activity = act;
       char.washPhase = tp.hour >= 22 ? 'shower' : 'brush';
       char.react = null;
       char.mealFood = null;
+      // 离开休闲：结束逗猫、清空休闲状态
+      if (prev === 'leisure') {
+        if (char.leisureAct === 'play_cat' && P.Cat && P.Cat.endPlay) P.Cat.endPlay();
+        char.leisureAct = null;
+      }
+      // 离开睡觉：夜间计划作废（下一晚重新掷）
+      if (prev === 'sleep') {
+        char.nightPlan = null;
+        char.nightAct = null;
+      }
       if (act === 'wash') {
         char.washSeq = char.washPhase === 'shower' ? null : 0;
         char.fridgePhase = null;
@@ -157,6 +402,12 @@
         // 站在冰箱左侧（x=262，与喝水点同位），面朝冰箱 → 开门时整个内腔可见，
         // 不会被小人身体挡住（旧站位 x=277 正对门缝，开门的内部几乎被完全遮住）
         char.target = { room: 3, x: 262, pose: 'fridge' };
+      } else if (act === 'leisure') {
+        // 休闲：具体活动与目标由休闲状态机决定（本帧 leisureUpdate 即开始）
+        char.washSeq = null;
+        char.fridgePhase = null;
+        char.leisureAct = null;
+        char.leisureT = -1;
       } else {
         char.washSeq = null;
         char.fridgePhase = null;
@@ -174,7 +425,8 @@
         char.moving = false;
         char.x = t.x;
         char.pose = t.pose;
-        char.dir = t.pose === 'work' ? -1 : 1;
+        char.dir = t.pose === 'work' ? -1 : (LEISURE_SPOTS[t.pose] ? LEISURE_SPOTS[t.pose].dir : 1);
+        if (LEISURE_SPOTS[t.pose]) char.arriveT = 0.5;   // 坐下/转身过渡
       } else {
         char.x += Math.sign(dx) * Math.min(Math.abs(dx), 15 * dt);
         char.dir = Math.sign(dx) || char.dir;
@@ -182,6 +434,11 @@
         char.pose = 'walk';
       }
     }
+
+    // 休闲活动子状态机 + 夜间活动
+    if (char.activity === 'leisure') leisureUpdate(dt);
+    nightUpdate(dt);
+    if (char.arriveT > 0) char.arriveT -= dt;
 
     // 餐前到冰箱取食材：开门取物（白雾）→ 关门 → 上桌
     if (isMeal(char.activity)) {
@@ -256,8 +513,13 @@
   }
 
   function screenModeName(mode) {
-    const m = mode || screenMode;
+    const m = mode || getScreenMode();
     return C.SCREEN_MODE_NAMES[m] || '';
+  }
+  // 休闲打游戏时屏幕显示"游戏画面"（供 roomLayout 绘制显示器内容）
+  function getScreenMode() {
+    if (char && char.activity === 'leisure' && char.leisureAct === 'game') return 'game';
+    return screenMode;
   }
   function cycleScreen() {
     const freel = P.Time.isFreelance(P.Time.now());
@@ -385,10 +647,27 @@
     if (pose === 'walk') { drawWalk(ctx, hx, d, o, t); return; }
     if (pose === 'work') { drawWork(ctx, hx, o, t); return; }
     if (pose === 'eat') { drawEat(ctx, hx, o, t); return; }
-    if (pose === 'leisure') { drawLeisure(ctx, hx, o, t); return; }
     if (pose === 'brush') { drawBrush(ctx, hx, o, t); return; }
     if (pose === 'breakDrink') { drawDrink(ctx, hx, o, t); return; }
+
+    // ---- 休闲活动 ----
+    if (pose === 'game') { drawGame(ctx, hx, o, t); return; }
+    if (pose === 'read') { drawRead(ctx, hx, o, t); return; }
+    if (pose === 'exercise') { drawExercise(ctx, hx, o, t); return; }
+    if (pose === 'play_cat') { drawPlayCat(ctx, hx, o, t); return; }
+    if (pose === 'look_out') { drawLookOut(ctx, hx, o, t); return; }
+    if (pose === 'phone') { drawPhone(ctx, hx, o, t); return; }
+
+    // 旧版休闲（床边玩手机）保留兜底
+    if (pose === 'leisure') { drawLeisure(ctx, hx, o, t); return; }
     drawStand(ctx, hx, d, o, t);
+  }
+
+  // 坐下过渡：到达休闲位后前 0.5s 身体轻微下沉（坐下的过渡动画）
+  function sitEase() {
+    if (char.arriveT <= 0) return 0;
+    const k = Math.max(0, Math.min(1, char.arriveT / 0.5));
+    return Math.round(k * 2);   // 2px → 0
   }
 
   // 站立身体基座（供 reaction 用）
@@ -597,6 +876,367 @@
     drawHead(ctx, hx - 5, 95, 1);
   }
 
+  // ============================================================
+  // 休闲活动绘制
+  // ============================================================
+
+  // 打游戏：坐姿，双手交替敲键盘 + 鼠标移动（屏幕游戏画面由 roomLayout 绘制）
+  function drawGame(ctx, hx, o, t) {
+    const st = sitEase();
+    ctx.fillStyle = o.pants;
+    ctx.fillRect(hx - 8, 118 + st, 10, 4);
+    ctx.fillRect(hx - 8, 122 + st, 3, 6);
+    ctx.fillRect(hx - 4, 118 + st, 3, 6);
+    ctx.fillStyle = '#3a3028';
+    ctx.fillRect(hx - 8, 126, 3, 2);
+    ctx.fillRect(hx - 4, 126, 3, 2);
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx - 4, 106 + st, 8, 13);
+    drawFolds(ctx, hx, 106 + st, o.shirt);
+    // 双手交替按键（相位错开）
+    const k1 = Math.round(Math.sin(t * 13) * 1.2);
+    const k2 = Math.round(Math.sin(t * 13 + 2.2) * 1.2);
+    ctx.fillRect(hx - 13, 108 + k1, 10, 2);        // 左手
+    ctx.fillRect(hx - 4, 110 - k2, 2, 7);          // 右手
+    // 按键闪光
+    if (Math.floor(t * 10) % 2 === 0) {
+      ctx.fillStyle = '#7ad8ff';
+      ctx.fillRect(hx - 12, 106, 1, 1);
+    }
+    // 鼠标（右侧，手滑动）
+    const mx = Math.round(Math.sin(t * 4) * 2);
+    ctx.fillStyle = '#3a3a46';
+    ctx.fillRect(hx + 5 + mx, 109, 3, 2);
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx + 4 + mx, 106, 2, 4);
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(hx + 4 + mx, 105, 2, 1);
+    drawHead(ctx, hx - 7, 95, -1);
+  }
+
+  // 看书：坐床边捧书，每 3-5 秒翻一页（页角掀起），头部微动
+  function drawRead(ctx, hx, o, t) {
+    const st = sitEase();
+    const bob = Math.round(Math.sin(t * 1.2) * 0.4);
+    ctx.fillStyle = o.pants;
+    ctx.fillRect(hx + 2, 112 + st, 6, 5);
+    ctx.fillRect(hx + 5, 117 + st, 3, 11);
+    ctx.fillStyle = '#3a3028';
+    ctx.fillRect(hx + 5, 126, 3, 2);
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx - 4, 100 + st, 8, 13);
+    drawFolds(ctx, hx, 100 + st, o.shirt);
+    // 书（翻页由 leisureSub 控制）
+    ctx.fillStyle = '#8a5a4a';
+    ctx.fillRect(hx - 6, 98 + st, 10, 6);
+    ctx.fillStyle = '#6e4638';
+    ctx.fillRect(hx - 1, 98 + st, 1, 6);          // 书脊
+    ctx.fillStyle = '#f5ead2';
+    ctx.fillRect(hx - 5, 99 + st, 4, 4);          // 左页
+    if (char.leisureSub === 'flip') {
+      // 翻页：右页页角掀起 1-2px（书页像素翻动）
+      const lift = Math.min(3, Math.floor((0.5 - char.leisureSubT) * 6));
+      ctx.fillRect(hx + 1, 99 + st + lift, 4, 4 - lift);
+      ctx.fillStyle = '#e8d8bc';
+      ctx.fillRect(hx + 1, 99 + st, 4, 1);
+      ctx.fillRect(hx + 1, 99 + st + 4 - lift, 1, lift);
+    } else {
+      ctx.fillRect(hx + 1, 99 + st, 4, 4);        // 右页
+    }
+    // 文字行
+    ctx.fillStyle = 'rgba(60,40,30,0.6)';
+    ctx.fillRect(hx - 4, 100 + st, 2, 1);
+    ctx.fillRect(hx + 2, 100 + st, 2, 1);
+    ctx.fillRect(hx + 2, 102 + st, 2, 1);
+    // 捧书手臂
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx - 6, 101 + st, 2, 5);
+    ctx.fillRect(hx + 3, 101 + st, 2, 5);
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(hx - 6, 105 + st, 1, 1);
+    ctx.fillRect(hx + 4, 105 + st, 1, 1);
+    drawHead(ctx, hx - 7, 89 + bob, 1);
+  }
+
+  // 健身：深蹲 / 俯卧撑 / 开合跳（由 leisureSub 轮换，每 30-60 秒换动作）
+  function drawExercise(ctx, hx, o, t) {
+    if (char.leisureSub === 'squat') { drawExSquat(ctx, hx, o, t); return; }
+    if (char.leisureSub === 'pushup') { drawExPushup(ctx, hx, o, t); return; }
+    drawExJack(ctx, hx, o, t);
+  }
+
+  // 深蹲：身体下沉回升 + 腿微开
+  function drawExSquat(ctx, hx, o, t) {
+    const ph = (t % 1.7) / 1.7;
+    const down = ph < 0.5 ? ph * 2 : (1 - (ph - 0.5) * 2);
+    const dy = Math.round(down * 3);
+    const spread = Math.round(down * 3);
+    ctx.fillStyle = o.pants;
+    ctx.fillRect(hx - 5 + spread, 113, 3, 13 + dy);
+    ctx.fillRect(hx + 2 - spread, 113, 3, 13 + dy);
+    ctx.fillStyle = '#3a3028';
+    ctx.fillRect(hx - 5 + spread, 126, 3, 2);
+    ctx.fillRect(hx + 2 - spread, 126, 3, 2);
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx - 4, 104 + dy, 8, 12);
+    drawFolds(ctx, hx, 104 + dy, o.shirt);
+    // 手臂前平举
+    ctx.fillRect(hx - 8, 105 + dy, 2, 7);
+    ctx.fillRect(hx + 6, 105 + dy, 2, 7);
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(hx - 8, 111 + dy, 2, 1);
+    ctx.fillRect(hx + 6, 111 + dy, 2, 1);
+    drawHead(ctx, hx - 6, 93 + dy, 1);
+  }
+
+  // 俯卧撑：身体水平起伏
+  function drawExPushup(ctx, hx, o, t) {
+    const ph = (t % 1.3) / 1.3;
+    const up = ph < 0.5 ? ph * 2 : (1 - (ph - 0.5) * 2);
+    const dy = Math.round(up * 2);
+    // 头（朝下看地面）
+    ctx.fillStyle = HAIR;
+    ctx.fillRect(hx - 12, 117 - dy, 6, 2);
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(hx - 12, 119 - dy, 5, 2);
+    // 身体（水平）
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx - 7, 121 - dy, 13, 4);
+    ctx.fillStyle = o.pants;
+    ctx.fillRect(hx - 7, 125 - dy, 13, 2);
+    ctx.fillStyle = '#3a3028';
+    ctx.fillRect(hx - 7, 126, 2, 1);
+    ctx.fillRect(hx + 4, 126, 2, 1);
+    // 手臂撑地（屈伸）
+    const bend = up ? 0 : 1;
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx + 3, 119 - dy, 2, 6 + bend);
+    ctx.fillRect(hx + 5, 122 - dy + bend, 3, 4);
+    // 汗滴
+    if (Math.floor(t * 3) % 3 === 0) {
+      ctx.fillStyle = 'rgba(150,210,255,0.9)';
+      ctx.fillRect(hx - 9, 114 - dy, 1, 1);
+    }
+  }
+
+  // 开合跳：手臂/腿部开合 + 起跳离地
+  function drawExJack(ctx, hx, o, t) {
+    const ph = (t % 0.9) / 0.9;
+    const open = ph < 0.5;
+    const hop = (ph < 0.25 || ph > 0.75) ? 1 : 0;
+    const sp = open ? 4 : 0;
+    ctx.fillStyle = o.pants;
+    ctx.fillRect(hx - 5 - sp, 116 - hop, 3, 10 + hop);
+    ctx.fillRect(hx + 2 + sp, 116 - hop, 3, 10 + hop);
+    ctx.fillStyle = '#3a3028';
+    ctx.fillRect(hx - 5 - sp, 126, 3, 2);
+    ctx.fillRect(hx + 2 + sp, 126, 3, 2);
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx - 4, 105 - hop, 8, 12);
+    drawFolds(ctx, hx, 105 - hop, o.shirt);
+    // 手臂：打开上举 / 并拢放下
+    const armY = open ? 94 - hop : 106 - hop;
+    ctx.fillRect(hx - 6, armY, 2, 11);
+    ctx.fillRect(hx + 4, armY, 2, 11);
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(hx - 6, armY, 1, 2);
+    ctx.fillRect(hx + 5, armY, 1, 2);
+    drawHead(ctx, hx - 6, 94 - hop, 1);
+  }
+
+  // 逗猫：站立挥动逗猫棒（猫追棒子扑跳，由 cat.js 处理）
+  function drawPlayCat(ctx, hx, o, t) {
+    ctx.fillStyle = o.pants;
+    ctx.fillRect(hx - 4, 116, 3, 12);
+    ctx.fillRect(hx + 1, 116, 3, 12);
+    ctx.fillStyle = '#3a3028';
+    ctx.fillRect(hx - 4, 126, 3, 2);
+    ctx.fillRect(hx + 1, 126, 3, 2);
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx - 4, 106, 8, 12);
+    drawFolds(ctx, hx, 106, o.shirt);
+    // 手臂挥棒
+    const sw = Math.round(Math.sin(t * 3.2) * 5);
+    const sy = Math.round(Math.sin(t * 2.7) * 3);
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx + 3, 104 + sy, 2, 9);
+    // 逗猫棒：杆 + 顶端羽毛（随摆动左右移动）
+    ctx.fillStyle = '#8a6a4a';
+    ctx.fillRect(hx + 4, 96 + sy, 1, 10);
+    ctx.fillStyle = '#c85a6a';
+    ctx.fillRect(hx + 2 + sw, 92 + sy, 4, 3);
+    ctx.fillStyle = '#e88a9a';
+    ctx.fillRect(hx + 3 + sw, 93 + sy, 2, 1);
+    ctx.fillStyle = '#a04858';
+    ctx.fillRect(hx + 5 + sw, 91 + sy, 1, 1);
+    drawHead(ctx, hx - 6, 95, 1);
+  }
+
+  // 发呆看窗外：站立微晃，偶尔抬头 1.5 秒
+  function drawLookOut(ctx, hx, o, t) {
+    const sway = Math.round(Math.sin(t * 1.1) * 0.6);
+    const lifting = char.leisureSub === 'lift';
+    ctx.fillStyle = o.pants;
+    ctx.fillRect(hx - 4, 116, 3, 12);
+    ctx.fillRect(hx + 1, 116, 3, 12);
+    ctx.fillStyle = '#3a3028';
+    ctx.fillRect(hx - 4, 126, 3, 2);
+    ctx.fillRect(hx + 1, 126, 3, 2);
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx - 4, 106, 8, 12);
+    drawFolds(ctx, hx, 106, o.shirt);
+    // 手臂垂放微晃
+    ctx.fillRect(hx - 5, 108 + sway, 2, 7);
+    ctx.fillRect(hx + 3, 108 - sway, 2, 7);
+    // 头：平视 / 偶尔抬头（面朝窗外 dir=-1）
+    const headY = lifting ? 92 : 95 + sway;
+    drawHead(ctx, hx - 6, headY, -1);
+  }
+
+  // 玩手机：躺/坐/趴 三姿势随机切换（每 2-3 分钟），滑动屏幕 + 屏幕光映脸
+  function drawPhone(ctx, hx, o, t) {
+    if (char.leisureSub === 'lie') { drawPhoneLie(ctx, o, t); return; }
+    if (char.leisureSub === 'prone') { drawPhoneProne(ctx, o, t); return; }
+    drawPhoneSit(ctx, hx, o, t);
+  }
+
+  // 坐床边玩手机（含滑动动画 + 光映脸）
+  function drawPhoneSit(ctx, hx, o, t) {
+    const st = sitEase();
+    ctx.fillStyle = o.pants;
+    ctx.fillRect(hx + 2, 112 + st, 6, 5);
+    ctx.fillRect(hx + 5, 117 + st, 3, 11);
+    ctx.fillStyle = '#3a3028';
+    ctx.fillRect(hx + 5, 126, 3, 2);
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx - 4, 100 + st, 8, 13);
+    drawFolds(ctx, hx, 100 + st, o.shirt);
+    // 手机（滑动：屏幕光点上下移动）
+    const sw = Math.floor(t * 2.2) % 4;
+    ctx.fillStyle = '#2a2a3a';
+    ctx.fillRect(hx + 4, 103, 4, 6);
+    ctx.fillStyle = '#7ad8ff';
+    ctx.fillRect(hx + 5, 104 + sw, 2, 1);
+    ctx.fillStyle = '#d8efff';
+    ctx.fillRect(hx + 5, 104 + sw, 1, 1);
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx + 2, 106, 2, 3);       // 拿手机的手
+    // 屏幕光映脸
+    const glow = ctx.createRadialGradient(hx + 6, 106, 1, hx + 6, 106, 9);
+    glow.addColorStop(0, 'rgba(122,216,255,0.30)');
+    glow.addColorStop(1, 'rgba(122,216,255,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(hx - 3, 96, 18, 18);
+    drawHead(ctx, hx - 7, 89, 1);
+  }
+
+  // 仰躺床上举手机（坐标固定：床 x=8-44）
+  function drawPhoneLie(ctx, o, t) {
+    // 被子下身体
+    ctx.fillStyle = '#5a8fc8';
+    ctx.fillRect(20, 112, 20, 8);
+    ctx.fillStyle = '#6fa3d8';
+    ctx.fillRect(20, 112, 20, 1);
+    // 头（枕头上）
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(12, 101, 7, 6);
+    ctx.fillStyle = HAIR;
+    ctx.fillRect(11, 100, 8, 4);
+    ctx.fillRect(11, 101, 3, 5);
+    // 举手机的手臂
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(15, 95, 2, 6);
+    ctx.fillRect(21, 96, 2, 4);
+    // 手机（脸上方，微晃）
+    const mx = Math.round(Math.sin(t * 1.6) * 1);
+    ctx.fillStyle = '#2a2a3a';
+    ctx.fillRect(17 + mx, 88, 4, 6);
+    ctx.fillStyle = '#7ad8ff';
+    ctx.fillRect(18 + mx, 89, 2, 3);
+    // 屏幕光映脸
+    const glow = ctx.createRadialGradient(19 + mx, 91, 1, 19 + mx, 91, 9);
+    glow.addColorStop(0, 'rgba(122,216,255,0.35)');
+    glow.addColorStop(1, 'rgba(122,216,255,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(10 + mx, 82, 18, 18);
+    // 睁眼
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(14, 103, 1, 1);
+    ctx.fillRect(17, 103, 1, 1);
+  }
+
+  // 趴床上玩手机（俯卧，脚翘起，屏幕滑动）
+  function drawPhoneProne(ctx, o, t) {
+    // 小腿翘起 + 脚
+    ctx.fillStyle = o.pants;
+    ctx.fillRect(30, 106, 3, 8);
+    ctx.fillRect(32, 104, 3, 5);
+    ctx.fillStyle = '#3a3028';
+    ctx.fillRect(32, 104, 2, 2);
+    // 身体（趴着）
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(14, 112, 16, 6);
+    ctx.fillRect(12, 110, 6, 8);
+    // 头（朝下看手机）
+    ctx.fillStyle = HAIR;
+    ctx.fillRect(11, 103, 7, 5);
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(11, 108, 7, 4);
+    // 手机（脸前，滑动）
+    const sw = Math.floor(t * 2.4) % 4;
+    ctx.fillStyle = '#2a2a3a';
+    ctx.fillRect(15, 96, 4, 6);
+    ctx.fillStyle = '#7ad8ff';
+    ctx.fillRect(16, 97 + sw, 2, 1);
+    // 手臂撑地
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(10, 112, 2, 5);
+    ctx.fillRect(22, 112, 2, 5);
+    // 屏幕光
+    const glow = ctx.createRadialGradient(17, 99, 1, 17, 99, 8);
+    glow.addColorStop(0, 'rgba(122,216,255,0.30)');
+    glow.addColorStop(1, 'rgba(122,216,255,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(9, 90, 16, 18);
+  }
+
+  // 夜间玩手机/翻身：床上坐起，手机光映脸
+  function drawNightPhone(ctx, o, t) {
+    // 被子
+    ctx.fillStyle = '#5a8fc8';
+    ctx.fillRect(10, 110, 24, 10);
+    ctx.fillStyle = '#6fa3d8';
+    ctx.fillRect(10, 110, 24, 1);
+    // 坐起的身体
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(14, 100, 8, 11);
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(19, 96, 7, 6);
+    ctx.fillStyle = HAIR;
+    ctx.fillRect(19, 94, 8, 4);
+    ctx.fillRect(19, 95, 3, 5);
+    // 手臂举手机
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(20, 94, 2, 4);
+    ctx.fillRect(26, 95, 2, 3);
+    // 手机（滑动）
+    const sw = Math.floor(t * 2.6) % 4;
+    ctx.fillStyle = '#2a2a3a';
+    ctx.fillRect(24, 88, 4, 6);
+    ctx.fillStyle = '#7ad8ff';
+    ctx.fillRect(25, 89 + sw, 2, 1);
+    // 屏幕光映脸
+    const glow = ctx.createRadialGradient(26, 91, 1, 26, 91, 10);
+    glow.addColorStop(0, 'rgba(122,216,255,0.35)');
+    glow.addColorStop(1, 'rgba(122,216,255,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(16, 82, 20, 20);
+    // 睁眼
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(21, 98, 1, 1);
+    ctx.fillRect(24, 98, 1, 1);
+  }
+
   // 站在冰箱左侧取食材（面朝右，手臂伸向冰箱门开口）
   function drawFridge(ctx, hx, o, t) {
     drawStandBody(ctx, hx, o);
@@ -705,6 +1345,8 @@
   }
 
   function drawSleep(ctx, t) {
+    // 夜间玩手机/翻身：坐起亮屏（结束后躺下继续睡）
+    if (char.nightAct === 'phoneToss') { drawNightPhone(ctx, outfitForSleep(), t); return; }
     // 躺在床上（头左脚右，藏在被子里）
     // 头（枕在枕头上）
     ctx.fillStyle = SKIN;
@@ -757,7 +1399,7 @@
     update: update,
     draw: draw,
     pos: pos,
-    screenMode: function () { return screenMode; },
+    screenMode: getScreenMode,
     screenName: screenModeName,
     cycleScreen: cycleScreen,
     isWork: function () { return char && char.pose === 'work'; },
@@ -765,13 +1407,34 @@
       if (!char) return null;
       return { sleeping: char.pose === 'sleep', startMin: char.sleepStartMin };
     },
+    // 当前休闲活动（供 roomLayout 判断是否打开游戏画面）
+    leisureAct: function () { return char ? char.leisureAct : null; },
+    // 逗猫棒顶端位置（供猫追玩具）
+    getToyX: function () {
+      if (!char || char.activity !== 'leisure' || char.leisureAct !== 'play_cat') return null;
+      const t = performance.now() / 1000;
+      return Math.round(char.x + 4 + Math.sin(t * 3.2) * 5);
+    },
+    getToyY: function () {
+      if (!char || char.activity !== 'leisure' || char.leisureAct !== 'play_cat') return null;
+      const t = performance.now() / 1000;
+      return Math.round(92 + Math.sin(t * 2.7) * 3);
+    },
+    nightAct: function () { return char ? char.nightAct : null; },
     fridgeOpen: fridgeOpen,
     mealFood: mealFood,
     react: react,
     reactRandom: reactRandom,
     _debug: function () {
       if (!char) return null;
-      return { x: char.x, pose: char.pose, activity: char.activity, fridgePhase: char.fridgePhase, mealFood: char.mealFood, washSeq: char.washSeq, washT: char.washT, react: char.react };
+      return {
+        x: char.x, pose: char.pose, activity: char.activity,
+        fridgePhase: char.fridgePhase, mealFood: char.mealFood,
+        washSeq: char.washSeq, washT: char.washT, react: char.react,
+        leisureAct: char.leisureAct, leisureT: Math.round(char.leisureT),
+        leisureSub: char.leisureSub, leisureSubT: Math.round(char.leisureSubT),
+        nightAct: char.nightAct, nightPlan: char.nightPlan
+      };
     }
   };
 })();

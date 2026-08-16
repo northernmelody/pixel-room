@@ -20,6 +20,12 @@
   const DOG_BOWL_X = 288;   // 进食站位（面朝右，嘴正好到碗边）
   const BOWL_X = 300;       // 狗粮碗静态 x（进食时重绘在狗身前）
 
+  // ---- 边界：腊肠狗身体半宽 19（尾巴 x-15 ~ 嘴/声波 x+26），
+  // 左右各留 21 保证整体完整可见、不溢出房间 ----
+  const DOG_HALF_WIDTH = 19;
+  const DOG_BOUND_MIN = DOG_HALF_WIDTH + 2;      // 21
+  const DOG_BOUND_MAX = W - DOG_HALF_WIDTH - 2;  // W-21
+
   // 状态定义
   const STATE = {
     IDLE: 'idle',           // 发呆/休息
@@ -39,9 +45,9 @@
   function init() {
     const saved = P.Storage.state;
     const seed = (saved.dogSeed !== undefined && saved.dogSeed !== null) ? saved.dogSeed : 0;
-    // 每次打开页面随机起始位置（房间常见落脚点，避免出生在家具里）
+    // 每次打开页面随机起始位置（房间常见落脚点，避免出生在家具里；在安全边界内）
     const spots = [24 + Math.random() * 30, 120 + Math.random() * 30, 250 + Math.random() * 30];
-    const sx = Math.max(12, Math.min(W - 12, spots[(Math.random() * spots.length) | 0]));
+    const sx = Math.max(DOG_BOUND_MIN, Math.min(DOG_BOUND_MAX, spots[(Math.random() * spots.length) | 0]));
     dog = {
       x: sx, dir: Math.random() < 0.5 ? -1 : 1,
       state: STATE.IDLE, stateT: 0, dur: 1,
@@ -66,7 +72,8 @@
       120 + Math.random() * 30,
       250 + Math.random() * 30
     ];
-    return Math.max(12, Math.min(W - 12, spots[(Math.random() * spots.length) | 0]));
+    // 随机目标点限制在安全范围 [21, W-21]
+    return Math.max(DOG_BOUND_MIN, Math.min(DOG_BOUND_MAX, spots[(Math.random() * spots.length) | 0]));
   }
 
   // 带权重的状态选择（晚上更爱睡觉）
@@ -115,7 +122,7 @@
   }
 
   function pickZoomTarget() {
-    return Math.random() < 0.5 ? 16 : W - 16;
+    return Math.random() < 0.5 ? DOG_BOUND_MIN : DOG_BOUND_MAX;
   }
 
   function moveToTarget(dt, spd) {
@@ -143,14 +150,10 @@
 
       case STATE.WANDER: {
         if (dog.target === null) dog.target = pickWanderSpot();
-        const dx = dog.target - dog.x;
-        if (Math.abs(dx) < 1) {
-          dog.target = null;
-          if (dog.stateT > dog.dur || Math.random() < dt * 0.4) {
-            enter(STATE.IDLE); dog.dur = 1 + Math.random() * 2;
-          }
-        } else {
-          moveToTarget(dt);
+        moveToTarget(dt);
+        if (dog.target === null) {
+          // 到达目标点 → 停止移动，等待状态切换
+          enter(STATE.IDLE); dog.dur = 1.5 + Math.random() * 2.5;
         }
         break;
       }
@@ -198,7 +201,10 @@
 
       case STATE.FOLLOW: {
         const p = P.Character.pos();
-        if (p) dog.target = p.x - p.dir * 12;   // 跟在小人身后一侧
+        if (p) {
+          const tx = p.x - p.dir * 12;   // 跟在小人身后一侧（夹在安全范围）
+          dog.target = Math.max(DOG_BOUND_MIN, Math.min(DOG_BOUND_MAX, tx));
+        }
         moveToTarget(dt, 10);
         if (dog.stateT > dog.dur) enter(pickState());
         break;
@@ -216,7 +222,8 @@
         if (dog.stateT > dog.dur) enter(pickState());
         break;
     }
-    dog.x = Math.max(12, Math.min(W - 12, dog.x));
+    // 硬边界：保证腊肠狗整体（含尾巴/嘴/声波）完整可见
+    dog.x = Math.max(DOG_BOUND_MIN, Math.min(DOG_BOUND_MAX, dog.x));
   }
 
   // ---- 外部触发 ----

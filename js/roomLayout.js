@@ -1262,7 +1262,10 @@
   function drawMonitorDynamic(ctx, st, t) {
     const R = FURN.workspace;
     const m = R.monitor;
-    const on = st.activity && st.activity.id === 'work';
+    // 工作/休闲打游戏时显示器开启
+    const gameOn = st.activity && st.activity.id === 'leisure' &&
+      P.Character.leisureAct && P.Character.leisureAct() === 'game';
+    const on = (st.activity && st.activity.id === 'work') || gameOn;
     const screen = { x: m.x + 1, y: m.y + 2, w: m.w - 2, h: m.h - 6 };
     if (on) {
       drawMonitorContent(ctx, P.Character.screenMode(), t, screen.x, screen.y, screen.w, screen.h);
@@ -1463,6 +1466,29 @@
           px(ctx, bx + 2, by + 3, 3, 2, cols[(i + 1) % 6]);
         }
         for (let i = 0; i < 6; i++) px(ctx, x + 2 + i * 2, y + h - 4, 1, 2, cols[i]);
+        break;
+      }
+      case 'game': {
+        // 休闲打游戏：小游戏画面（跑动小人 + 障碍 + 分数）
+        px(ctx, x, y + 4, w, h - 4, '#101820');
+        px(ctx, x + 2, y + h - 5, w - 4, 1, '#3a5a3a');      // 地面
+        const rx = Math.floor(x + 4 + ((t * 16) % Math.max(4, w - 18)));
+        const bounce = Math.floor(t * 10) % 2;
+        ctx.fillStyle = '#ffd05a';
+        px(ctx, rx, y + h - 9 - bounce, 2, 2);               // 角色身体
+        ctx.fillStyle = '#ff8a5a';
+        px(ctx, rx, y + h - 7 - bounce, 2, 2);               // 角色腿
+        ctx.fillStyle = '#ffd98a';
+        px(ctx, rx, y + h - 10 - bounce, 1, 1);              // 头
+        ctx.fillStyle = '#5a8ac8';
+        const ox = Math.floor(x + w - 5 - ((t * 13) % Math.max(4, w - 10)));
+        px(ctx, ox, y + h - 8, 3, 3);                        // 障碍
+        // 分数点
+        ctx.fillStyle = '#ffffff';
+        for (let i = 0; i < 3; i++) px(ctx, x + w - 9 + i * 2, y + 5, 1, 1);
+        // 手柄提示
+        ctx.fillStyle = '#6a7a8a';
+        px(ctx, x + 3, y + h - 8, 3, 2);
         break;
       }
       default: {

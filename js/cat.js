@@ -92,15 +92,17 @@
         break;
       }
       case 'scratch': {
-        // 原地抓窗帘（小动作）
+        // 走去窗帘再原地抓挠（不瞬移）
         cat.dur = 5 + Math.random() * 10;
-        cat.x = CURTAIN_X; cat.y = FLOOR; cat.perchId = null; cat.dir = -1;
+        cat.y = FLOOR; cat.perchId = null; cat.jumpT = null; cat.dir = -1;
+        if (Math.abs(cat.x - CURTAIN_X) > 2) cat.target = CURTAIN_X;
         break;
       }
       case 'underbed': {
-        // 钻到床下，只露出尾巴
+        // 走到床下再躲起来（只露尾巴）
         cat.dur = 15 + Math.random() * 30;
-        cat.x = UNDERBED_X; cat.y = FLOOR; cat.perchId = null;
+        cat.y = FLOOR; cat.perchId = null; cat.jumpT = null;
+        if (Math.abs(cat.x - UNDERBED_X) > 2) cat.target = UNDERBED_X;
         break;
       }
       case 'eat': {
@@ -109,6 +111,19 @@
         break;
       }
     }
+  }
+
+  // 统一地面移动（不瞬移：每次只走一小段）
+  function moveToTarget(dt, spd) {
+    if (cat.target === null) return;
+    const dx = cat.target - cat.x;
+    const s = spd || 8;
+    if (Math.abs(dx) < 0.8) {
+      cat.x = cat.target; cat.target = null;
+      return;
+    }
+    cat.x += Math.sign(dx) * Math.min(Math.abs(dx), s * dt);
+    cat.dir = Math.sign(dx);
   }
 
   function pickWanderSpot() {
@@ -160,13 +175,9 @@
         break;
       case 'wander': {
         if (cat.target === null) { cat.target = pickWanderSpot(); cat.stateT = 0; }
-        const dx = cat.target - cat.x;
-        if (Math.abs(dx) < 1) {
-          cat.target = null;
+        moveToTarget(dt);
+        if (cat.target === null) {
           enter('idle'); cat.dur = 1 + Math.random() * 2;
-        } else {
-          cat.x += Math.sign(dx) * Math.min(Math.abs(dx), 8 * dt);
-          cat.dir = Math.sign(dx);
         }
         break;
       }
@@ -187,12 +198,12 @@
         const p = P.Character.pos();
         const tx = p.x + p.dir * 5;
         const dx = tx - cat.x;
-        if (cat.target === null && Math.abs(dx) > 2) {
-          cat.x += Math.sign(dx) * Math.min(Math.abs(dx), 9 * dt);
-          cat.dir = Math.sign(dx);
+        if (Math.abs(dx) > 2) {
+          cat.target = tx;
+          moveToTarget(dt, 9);
         } else {
-          cat.target = true;
-          if (cat.stateT > cat.dur) { cat.target = null; enter('idle'); cat.dur = 1 + Math.random() * 2; }
+          cat.target = null;   // 已蹭到，原地蹭
+          if (cat.stateT > cat.dur) { enter('idle'); cat.dur = 1 + Math.random() * 2; }
         }
         break;
       }
@@ -215,12 +226,11 @@
       }
       case 'walkaway': {
         if (cat.target === null) cat.target = pickWanderSpot();
-        const dx = cat.target - cat.x;
-        if (Math.abs(dx) < 1) { enter('idle'); cat.dur = 1 + Math.random() * 2; }
-        else { cat.x += Math.sign(dx) * Math.min(Math.abs(dx), 12 * dt); cat.dir = Math.sign(dx); }
+        moveToTarget(dt, 12);
+        if (cat.target === null) { enter('idle'); cat.dur = 1 + Math.random() * 2; }
         break;
       }
-      // ---- 攀爬 ----
+      // ---- 攀爬（两阶段：先走到附近 → 跳跃动画 → 到达）----
       case 'climb': {
         if (!cat.climbPt) {
           // 选择攀爬点（小人在吃饭时优先餐桌蹭饭）
@@ -235,12 +245,13 @@
         const pt = cat.climbPt;
         if (cat.jumpT === null) {
           const dx = pt.x - cat.x;
-          if (Math.abs(dx) < 2) {
+          if (Math.abs(dx) < 4) {
+            // 已走到附近 → 跳跃动画（弧线 + 落地 squash）
             cat.jumpT = 0; cat.jumpFrom = FLOOR; cat.jumpTo = pt.y;
             cat.dir = pt.x >= cat.x ? 1 : -1;
           } else {
-            cat.x += Math.sign(dx) * Math.min(Math.abs(dx), 8 * dt);
-            cat.dir = Math.sign(dx);
+            cat.target = pt.x;
+            moveToTarget(dt, 8);
           }
         } else {
           cat.jumpT += dt / 0.38;
@@ -269,40 +280,53 @@
         if (cat.jumpT >= 1) {
           cat.jumpT = null; cat.y = FLOOR; cat.squashT = 0.12;
           cat.perchId = null;
-          enter('idle'); cat.dur = 1.5;
+          if (cat.petAfterJump) { cat.petAfterJump = false; enterPet(); }
+          else if (cat.fleeAfter) { cat.fleeAfter = false; startFlee(); }
+          else if (cat.playAfter) { cat.playAfter = false; enterPlayState(); }
+          else { enter('idle'); cat.dur = 1.5; }
         }
         break;
       }
-      // ---- 床下 / 爬出 ----
+      // ---- 床下 / 爬出（先走到床下，不瞬移）----
       case 'underbed': {
-        if (cat.stateT > cat.dur) {
+        if (cat.target !== null) {
+          // 正在走去床下
+          moveToTarget(dt, 9);
+          if (cat.target === null) { cat.x = UNDERBED_X; cat.stateT = 0; }
+        } else if (cat.stateT > cat.dur) {
           cat.state = 'crawlout'; cat.stateT = 0; cat.dur = 1.2;
           cat.target = null;
         }
         break;
       }
       case 'crawlout': {
-        if (cat.target === null) cat.target = pickWanderSpot();
-        const dx = cat.target - cat.x;
-        if (Math.abs(dx) < 1) { enter('idle'); cat.dur = 1 + Math.random() * 2; }
-        else { cat.x += Math.sign(dx) * Math.min(Math.abs(dx), 9 * dt); cat.dir = Math.sign(dx); }
+        if (cat.target === null) {
+          cat.target = cat.playAfter ? (P.Character.pos().x || UNDERBED_X + 20) : pickWanderSpot();
+        }
+        moveToTarget(dt, 9);
+        if (cat.target === null) {
+          if (cat.playAfter) { cat.playAfter = false; enterPlayState(); }
+          else if (cat.petAfterJump) { cat.petAfterJump = false; enterPet(); }
+          else { enter('idle'); cat.dur = 1 + Math.random() * 2; }
+        }
         break;
       }
-      // ---- 窗帘抓挠 ----
+      // ---- 窗帘抓挠（先走到窗帘，不瞬移）----
       case 'scratch': {
-        if (cat.stateT > cat.dur) enter(pickState());
+        if (cat.target !== null) {
+          moveToTarget(dt, 9);
+          if (cat.target === null) { cat.x = CURTAIN_X; cat.stateT = 0; }
+        } else if (cat.stateT > cat.dur) enter(pickState());
         break;
       }
-      // ---- 吃猫粮 ----
+      // ---- 吃猫粮（先走到碗边）----
       case 'eat': {
         if (!cat.eating) {
-          const dx = BOWL_X - cat.x;
-          if (Math.abs(dx) < 2) {
+          if (cat.target === null) cat.target = BOWL_X;
+          moveToTarget(dt);
+          if (cat.target === null) {
             cat.eating = true; cat.eatT = 2.5 + Math.random() * 2;
             cat.dir = -1; cat.x = BOWL_X; cat.perchId = null;
-          } else {
-            cat.x += Math.sign(dx) * Math.min(Math.abs(dx), 8 * dt);
-            cat.dir = Math.sign(dx);
           }
         } else {
           cat.eatT -= dt;
@@ -316,24 +340,24 @@
         }
         break;
       }
-      // ---- 惊吓逃跑 ----
+      // ---- 惊吓逃跑（先跑过去，不瞬移）----
       case 'flee': {
         if (!cat.fleeSpot) cat.fleeSpot = nearestHide();
         const sp = cat.fleeSpot;
         if (cat.jumpT === null) {
           const dx = sp.x - cat.x;
-          if (Math.abs(dx) < 2) {
+          if (Math.abs(dx) < 4) {
             if (sp.hide === 'underbed') {
-              cat.x = sp.x; cat.y = FLOOR; cat.perchId = null;
-              cat.state = 'underbed'; cat.stateT = 0;
+              // 已到床下 → 直接钻入（enter 会检查距离决定是否再走）
+              enter('underbed');
               cat.dur = 8 + Math.random() * 6;
             } else {
               cat.jumpT = 0; cat.jumpFrom = FLOOR; cat.jumpTo = sp.y;
               cat.dir = sp.x >= cat.x ? 1 : -1;
             }
           } else {
-            cat.x += Math.sign(dx) * Math.min(Math.abs(dx), 26 * dt);
-            cat.dir = Math.sign(dx);
+            cat.target = sp.x;
+            moveToTarget(dt, 26);
           }
         } else {
           cat.jumpT += dt / 0.3;
@@ -342,6 +366,38 @@
             cat.perchId = sp.id;
             cat.state = 'perch'; cat.stateT = 0; cat.dur = 10 + Math.random() * 8;
           }
+        }
+        break;
+      }
+      // ---- 逗猫（追逗猫棒）----
+      case 'play': {
+        if (!cat.playOn) { enter('idle'); cat.dur = 1.5; break; }
+        if (cat.playRest > 0) {
+          // 短暂休息（蹲着看逗猫棒）
+          cat.playRest -= dt;
+          break;
+        }
+        if (cat.jumpT !== null) {
+          // 扑跳动画（原地小跳弧线）
+          cat.jumpT += dt / 0.28;
+          if (cat.jumpT >= 1) {
+            cat.jumpT = null; cat.squashT = 0.1;
+            cat.playRest = 1.5 + Math.random() * 2.5;
+          }
+          break;
+        }
+        const toy = (P.Character.getToyX && P.Character.getToyY)
+          ? { x: P.Character.getToyX(), y: P.Character.getToyY() } : null;
+        if (!toy) break;
+        const dx = toy.x - cat.x;
+        if (Math.abs(dx) > 5) {
+          cat.x += Math.sign(dx) * Math.min(Math.abs(dx), 15 * dt);
+          cat.dir = Math.sign(dx);
+          if (Math.random() < dt * 0.8) { if (P.Audio && P.Audio.meow) P.Audio.meow(); }
+        } else {
+          // 扑向逗猫棒
+          cat.jumpT = 0; cat.jumpFrom = FLOOR; cat.jumpTo = FLOOR;
+          cat.dir = toy.x >= cat.x ? 1 : -1;
         }
         break;
       }
@@ -354,10 +410,7 @@
     cat.petChain = (now - cat.petLastAt <= 3000) ? cat.petChain + 1 : 1;
     cat.petLastAt = now;
     cat.petLevel = Math.min(4, cat.petChain);
-    cat.state = 'pet'; cat.stateT = 0; cat.target = null;
     cat.moodT = 0;
-    cat.perchId = null; cat.y = FLOOR; cat.jumpT = null;
-    cat.dur = cat.petLevel === 1 ? 1.1 : cat.petLevel === 2 ? 1.7 : cat.petLevel === 3 ? 2.6 : 1.0;
     if (cat.petLevel === 1) { if (P.Audio) P.Audio.meow(); }
     if (cat.petLevel >= 2) { if (P.Audio) P.Audio.purrStart(); }
     const st = P.Storage.state;
@@ -365,15 +418,86 @@
     st.petTotal = (st.petTotal || 0) + 1;
     P.Storage.save();
     P.Events.emit('cat-pet', { count: st.petToday });
+    if (cat.state === 'underbed' && cat.target === null) {
+      // 在床下：先爬出来再摸（不瞬移）
+      cat.state = 'crawlout'; cat.stateT = 0; cat.dur = 1.2;
+      cat.target = P.Character.pos().x;
+      cat.petAfterJump = true;
+    } else if (cat.jumpT === null && cat.y !== FLOOR) {
+      // 在高处（攀爬/家具顶）：先跳下来再进入摸猫（不瞬移）
+      cat.jumpT = 0; cat.jumpFrom = cat.y; cat.jumpTo = FLOOR;
+      cat.state = 'jumpdown'; cat.stateT = 0; cat.petAfterJump = true;
+    } else {
+      enterPet();
+    }
+  }
+
+  function enterPet() {
+    cat.petAfterJump = false;
+    cat.perchId = null; cat.y = FLOOR; cat.jumpT = null;
+    cat.state = 'pet'; cat.stateT = 0; cat.target = null;
+    cat.dur = cat.petLevel === 1 ? 1.1 : cat.petLevel === 2 ? 1.7 : cat.petLevel === 3 ? 2.6 : 1.0;
   }
 
   // 快速开关灯惊吓：跑向最近隐蔽点（或跳上去）
   function frightened() {
     if (!cat) return;
     cat.moodT = 0;
-    cat.state = 'flee'; cat.stateT = 0; cat.target = null; cat.fleeSpot = null;
-    cat.eating = false; cat.perchId = null; cat.jumpT = null;
+    cat.eating = false;
+    if (cat.jumpT === null && cat.y !== FLOOR) {
+      // 在高处：先跳下来再逃跑（不瞬移）
+      cat.jumpT = 0; cat.jumpFrom = cat.y; cat.jumpTo = FLOOR;
+      cat.state = 'jumpdown'; cat.stateT = 0; cat.fleeAfter = true;
+    } else {
+      startFlee();
+    }
     if (P.Audio) P.Audio.meow();
+  }
+
+  function startFlee() {
+    cat.fleeAfter = false;
+    cat.state = 'flee'; cat.stateT = 0; cat.target = null; cat.fleeSpot = null;
+    cat.perchId = null; cat.jumpT = null;
+  }
+
+  // ---- 逗猫：猫进入玩耍状态，追逗猫棒 ----
+  function playWithHuman() {
+    if (!cat) return;
+    cat.moodT = 0;
+    cat.eating = false;
+    cat.playOn = true;
+    if (cat.state === 'underbed' && cat.target === null) {
+      // 从床下爬出再玩（不瞬移）
+      cat.state = 'crawlout'; cat.stateT = 0; cat.dur = 1.2;
+      cat.target = P.Character.pos().x;
+      cat.playAfter = true;
+    } else if (cat.jumpT === null && cat.y !== FLOOR) {
+      // 在高处：先跳下来
+      cat.jumpT = 0; cat.jumpFrom = cat.y; cat.jumpTo = FLOOR;
+      cat.state = 'jumpdown'; cat.stateT = 0; cat.playAfter = true;
+    } else {
+      enterPlayState();
+    }
+  }
+
+  function enterPlayState() {
+    cat.playAfter = false;
+    cat.perchId = null; cat.y = FLOOR; cat.jumpT = null;
+    cat.state = 'play'; cat.stateT = 0; cat.target = null;
+    cat.playRest = 20 + Math.random() * 20;   // 玩一会儿歇一会儿
+  }
+
+  // 逗猫结束：回到普通行为
+  function endPlay() {
+    if (!cat) return;
+    cat.playOn = false;
+    cat.playAfter = false;
+    if (cat.state === 'play') { enter('idle'); cat.dur = 1.5; }
+  }
+
+  // 猫是否在睡觉（休闲选 play_cat 时用于排除）
+  function isSleeping() {
+    return !!cat && cat.state === 'sleep';
   }
 
   function pos() {
@@ -528,8 +652,8 @@
     const pal = c.palette;
     const x = Math.round(c.x);
 
-    // 床下：只露尾巴
-    if (c.state === 'underbed') {
+    // 床下（已到达才隐藏；走过去的路上正常显示，不瞬移）
+    if (c.state === 'underbed' && c.target === null) {
       drawUnderbedTail(ctx, pal, t);
       return;
     }
@@ -602,8 +726,8 @@
       }
     }
 
-    // 窗帘抓挠：前爪挠 + 抓痕
-    if (c.state === 'scratch') {
+    // 窗帘抓挠（到达后才画前爪与抓痕）：前爪挠 + 抓痕
+    if (c.state === 'scratch' && c.target === null) {
       const sw = Math.floor(t * 6) % 2;
       ctx.fillStyle = pal.body;
       if (sw === 0) {
@@ -622,12 +746,15 @@
     update: update,
     pet: pet,
     frightened: frightened,
+    playWithHuman: playWithHuman,
+    endPlay: endPlay,
+    isSleeping: isSleeping,
     pos: pos,
     perchId: perchId,
     draw: draw,
     _debug: function () {
       if (!cat) return null;
-      return { state: cat.state, stateT: cat.stateT, dur: cat.dur, target: cat.target, moodT: cat.moodT, x: cat.x, y: cat.y, perchId: cat.perchId, petLevel: cat.petLevel, petChain: cat.petChain };
+      return { state: cat.state, stateT: cat.stateT, dur: cat.dur, target: cat.target, moodT: cat.moodT, x: cat.x, y: cat.y, perchId: cat.perchId, petLevel: cat.petLevel, petChain: cat.petChain, playOn: cat.playOn, playRest: Math.round(cat.playRest) };
     }
   };
 })();

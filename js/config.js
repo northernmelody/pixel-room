@@ -60,7 +60,7 @@
 
     // ---- 电脑屏幕内容 ----
     SCREEN_MODES: ['coding', 'video', 'chat', 'slacking', 'art'],
-    SCREEN_MODE_NAMES: { coding: '写代码', video: '看视频', chat: '聊天', slacking: '摸鱼', art: '画画' },
+    SCREEN_MODE_NAMES: { coding: '写代码', video: '看视频', chat: '聊天', slacking: '摸鱼', art: '画画', game: '打游戏' },
 
     // ---- 存档 ----
     STORAGE_KEY: 'pixel-room-save-v1',

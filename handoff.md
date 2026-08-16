@@ -385,3 +385,65 @@ GitHub 仓库：https://github.com/northernmelody/pixel-room
 - 连续 4 次刷新：猫起点 258.8 / 260.8 / 31.0 / 124.0，狗起点 276.4 / 143.5 / 259.7 /
   269.6（均随机、不出界、朝向随机）。
 
+
+## 14. 休闲时段扩充 + 夜间活动 + 边界/瞬移修复（2026-08）
+
+> 需求：休闲时段（19:00-22:00）6 种活动子状态机；夜间不再健身、70% 概率整夜无活动；
+> 小狗边界修复（[21, W-21] 完整可见）；猫移动全部连续无瞬移。
+
+### 14.1 休闲活动系统（js/character.js）
+- 6 种活动：`game`（工作区电脑前，双手交替敲键盘+鼠标移动+屏幕游戏画面）、`read`
+  （床边捧书，每 3-5s 翻页：页角掀起 1-2px，头部微动）、`exercise`（工作区空处 x=96，
+  深蹲/俯卧撑/开合跳三动作循环，每 30-60s 换动作）、`play_cat`（挥逗猫棒，猫追棒扑跳）、
+  `look_out`（卧室窗边 x=63 面朝窗外，微晃+偶尔抬头 1.5s，时长 10-30s）、`phone`
+  （床边躺/坐/趴三姿势随机切换，每 2-3 分钟，滑动动画+屏幕光映脸）。
+- `LEISURE_SPOTS` 记录各活动站位（绝对 x）与朝向；每次切换 `goToLeisure()` 先走到目标
+  （不瞬移，走路 15px/s），到达后 `leisureT`（5-20 分钟）开始计时，结束后 `pickLeisure()`
+  带权随机选下一项且不连续重复。
+- 权重：game 20 / read 18 / exercise（19:00-21:00 高=26；21:00-21:30=12；21:30 后≈5%）/
+  play_cat 16 / look_out 7 / phone 18；猫睡觉（`P.Cat.isSleeping()`）时 play_cat 权重 0，
+  其权重转给 read/phone，且不会调用 `playWithHuman`。
+- 过渡动画：到达时 `arriveT=0.5s` 身体下沉 2px（坐下过渡）；转身随行走方向；
+  手机姿势切换先 0.6s 坐起过渡再躺/趴。
+- 调试：`?leisurefast` 让休闲时长缩至 1/50（便于观察切换）。
+- 显示器联动：休闲 game 时 `P.Character.screenMode()` 返回 `'game'`，
+  roomLayout `drawMonitorDynamic` 开启显示器并绘制小游戏画面（跑动小人+障碍+分数+地面），
+  config 新增 `SCREEN_MODE_NAMES.game = '打游戏'`。
+
+### 14.2 夜间活动（js/character.js）
+- 入睡（22.5）时 `makeNightPlan()`：70% 概率空计划（整夜无活动）；30% 生成 1-3 个活动，
+  类型按权重：上厕所 20% / 喝水 15% / 吃夜宵 10% / 玩手机翻身 30%（其余 25% 无事）。
+- 活动时刻用"入睡后经过的分钟数"（23:12 ~ 次日 06:48 = 42~498 分钟），天然跨零点；
+  `nightUpdate()` 按经过时间触发（修复了旧方案 atMin>1440 永不触发与跨零点比较错误）。
+- 执行：toilet 走到卫生间 x=212 坐马桶 45-90s / drink 走到厨房 x=262 喝水 30-70s /
+  snack 走到餐桌 x=248 吃 60-120s / phoneToss 留床坐起玩手机（`drawNightPhone` 光映脸）。
+- 活动结束自动回床（target x=24 pose sleep）继续睡；07:30 起床洗漱流程不受影响；
+  离开 sleep 时重置 nightPlan（下一晚重新掷）。无夜间健身。
+
+### 14.3 小狗边界（js/dog.js）
+- `DOG_HALF_WIDTH = 19`；边界 `[21, W-21]`（`DOG_BOUND_MIN/MAX`）。
+- init / pickWanderSpot / pickZoomTarget / FOLLOW 目标全部夹到安全范围；每帧硬夹紧。
+- WANDER 到达目标点后停止移动，进入 idle 等待状态切换（不再原地续走）。
+
+### 14.4 猫瞬移修复（js/cat.js）
+- 新增统一 `moveToTarget(dt, spd)`；wander/rub/walkaway/crawlout/eat/climb/flee 全部改用它。
+- 消除瞬移：scratch/underbed 先走到窗帘/床下再动作（到达前正常绘制，到达后隐藏/抓挠）；
+  eat 由 moveToTarget 到达（不再 2px 直接贴）；pet/frightened/playWithHuman 在高处时先
+  jumpdown 落地（petAfterJump/fleeAfter/playAfter 链式）；摸床下猫先 crawlout 爬出。
+- 攀爬两阶段：先走到攀爬点附近（<4px）→ 跳跃动画（0.38s 弧线+squash）→ 到达 perch。
+
+### 14.5 逗猫联动（js/character.js / js/cat.js）
+- `P.Character.getToyX()/getToyY()` 返回逗猫棒顶端（随 sin 摆动）；仅 play_cat 时非 null。
+- `P.Cat.playWithHuman()` 进入 `play` 状态：追玩具（15px/s），靠近时扑跳（0.28s 小跳），
+  玩 20-40s 休息 1.5-4s，偶发喵叫；`endPlay()` 恢复普通行为；`isSleeping()` 供休闲选活动。
+
+### 14.6 验证
+- `node --check` 16 个 JS 全部通过；新增 `_tools/smoke-leisure.js` 全绿：
+  休闲 66 分钟 234 次切换、6 种活动全出现、单帧最大位移 0.75px（走路上限，无瞬移）、
+  猫睡觉不选 play_cat、逗猫追棒/扑跳/休息、猫 60k 帧单帧位移 ≤1.5px（zoomies 冲刺上限）、
+  狗 x∈[21,299]、夜间 70% 空计划+活动触发+回床、健身占比 19:30=22.4% / 21:50=8.1%；
+- 既有 smoke-dog / smoke-fridge 全绿（回归无破坏）；
+- agent-browser 实测：`?t=19:30&leisurefast` 六种活动截图
+  （`_shots/leisure-{game,read,exercise,play_cat,look_out,phone}.png`），
+  play_cat 时 cat=play 追棒；夜间 22.6 验证 phoneToss 触发（留床亮手机光，床区蓝调像素）；
+  全时段扫描 07:40~23:30 无控制台错误、作息行为正常。
