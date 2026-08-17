@@ -439,6 +439,156 @@
     // 挂钟阴影
     ctx.fillStyle = 'rgba(0,0,0,0.15)';
     ctx.fillRect(cl.x + 1, cl.y + cl.h, cl.w, 1);
+    // 床头墙上挂件条（Pixel Plushies 静态装饰，z=0）
+    drawPlushWall(ctx);
+  }
+
+  // ============================================================
+  // 卧室墙面挂件条：7 个缩小版 Pixel Plushies（静态背景装饰）
+  // 两排：第一排 4 个（腊肠狗/奶茶/牛油果/兔子），第二排 3 个（橙色玩偶/章鱼/拉面碗）
+  // 每格 7 逻辑像素宽，间距 2px；自动生成 1px 深色描边，保证墙面可见度
+  // ============================================================
+  // 挂件像素图：'.'=透明，其余字母对应 PLUSH_PAL 调色板；坐标均为整数
+  const PLUSH_PAL = {
+    dachshund: { B: '#8B5A2B', E: '#5C3A1E', K: '#24150C', T: '#C49A6C', N: '#24150C' },
+    boba:      { S: '#E04848', C: '#F8F0E0', T: '#8A5A34', P: '#1E1208' },
+    avocado:   { S: '#3F6A4A', F: '#A8C878', P: '#8A5A34' },
+    bunny:     { W: '#FDFAF2', P: '#F0A8B8', K: '#D8404A' },
+    orange:    { O: '#F08030', K: '#3A2010', M: '#3A2010' },
+    octopus:   { P: '#F07898', K: '#2A1A22', M: '#2A1A22' },
+    ramen:     { R: '#E04A52', W: '#F8F4E8', S: '#DED6C8', Y: '#F0D070', N: '#C89040', C: '#8A6A4A' }
+  };
+  const PLUSH_ART = {
+    // 腊肠狗：大垂耳 + 圆头 + 长身 + 短腿（棕色，米白口鼻）
+    dachshund: [
+      '.BBBBB.',
+      'EBKBKBE',
+      'EBBBBBE',
+      'EBBBBBE',
+      'E.BTTB.',
+      '..BNNB.',
+      '..BBBB.',
+      '..B.B..',
+      '..B.B..'
+    ],
+    // 珍珠奶茶：红吸管 + 米白奶盖 + 棕奶茶 + 底部珍珠
+    boba: [
+      '..S....',
+      '..S....',
+      '..S....',
+      '..S....',
+      '.CSCCC.',
+      '.TTTTT.',
+      '.TTTTT.',
+      '.TPPPT.',
+      '..TTT..'
+    ],
+    // 牛油果：深绿皮 + 亮绿肉 + 深棕核
+    avocado: [
+      '.SSSS..',
+      'SFFFFS.',
+      'SFFPPFS',
+      'SFFPPFS',
+      'SFFFFS.',
+      '.SSSS..'
+    ],
+    // 白兔：长耳（粉耳内）+ 圆脸 + 红眼
+    bunny: [
+      '..W.W..',
+      '..W.W..',
+      '..P.P..',
+      '..P.P..',
+      '..W.W..',
+      '.WWWWW.',
+      '.WKWKW.',
+      '.WWWWW.',
+      '..WWW..'
+    ],
+    // 橙色玩偶：圆润横条（两端圆头小尾）+ 圆眼笑脸
+    orange: [
+      '.OOOOO.',
+      'OOOOOOO',
+      'OOKOKOO',
+      'OOOMOOO',
+      '.OOOOO.'
+    ],
+    // 粉色章鱼：粉圆头 + 波浪触手
+    octopus: [
+      '..PPP..',
+      '.PPPPP.',
+      '.PKPKP.',
+      '.PPPPP.',
+      '.PMMPP.',
+      '.PPPPP.',
+      'P.P.P.P',
+      '.P.P.P.'
+    ],
+    // 拉面碗：红碗沿 + 面条纹理 + V 形筷子 + 白碗身（碗口收窄）
+    ramen: [
+      'C.....C',
+      '.C...C.',
+      '..C.C..',
+      '.RRRRR.',
+      '.YNNNY.',
+      '.WWWWW.',
+      '.WWWWW.',
+      '..SSS..'
+    ]
+  };
+  // 挂件顺序（从左到右）
+  const PLUSH_ORDER = ['dachshund', 'boba', 'avocado', 'bunny', 'orange', 'octopus', 'ramen'];
+  const PLUSH_CELL_W = 7, PLUSH_GAP = 2;
+
+  // 像素图绘制：先画自动 1px 深色描边，再画本体（保持像素对齐、无抗锯齿）
+  function drawPlushArt(ctx, art, pal, x, y, outline) {
+    const h = art.length, w = art[0].length;
+    ctx.fillStyle = outline;
+    for (let r = 0; r < h; r++) {
+      for (let c = 0; c < w; c++) {
+        if (art[r][c] === '.') continue;
+        if (r === 0 || art[r - 1][c] === '.') ctx.fillRect(x + c, y + r - 1, 1, 1);
+        if (r === h - 1 || art[r + 1][c] === '.') ctx.fillRect(x + c, y + r + 1, 1, 1);
+        if (c === 0 || art[r][c - 1] === '.') ctx.fillRect(x + c - 1, y + r, 1, 1);
+        if (c === w - 1 || art[r][c + 1] === '.') ctx.fillRect(x + c + 1, y + r, 1, 1);
+      }
+    }
+    for (let r = 0; r < h; r++) {
+      for (let c = 0; c < w; c++) {
+        const ch = art[r][c];
+        if (ch === '.') continue;
+        ctx.fillStyle = pal[ch];
+        ctx.fillRect(x + c, y + r, 1, 1);
+      }
+    }
+  }
+
+  // 单个挂件：顶部小挂点 + 像素图
+  function drawPlushCell(ctx, key, x, y) {
+    const pal = PLUSH_PAL[key], art = PLUSH_ART[key];
+    // 顶部挂点（1px 深色小环）
+    ctx.fillStyle = '#3a2a20';
+    ctx.fillRect(x + 3, y, 2, 1);
+    ctx.fillRect(x + 3, y + 1, 1, 1);
+    // 本体（挂点下方 1px 开始）
+    drawPlushArt(ctx, art, pal, x, y + 1, '#2a1c14');
+  }
+
+  // 挂件条：两排（第一排 4 个，第二排 3 个），整体水平居中于空闲墙面
+  function drawPlushWall(ctx) {
+    // 位置：挂画（y=62-71）下方、床头板（y=100）上方的空闲墙面；
+    // 第一排（x=16..50）避开左缘衣柜（x=2-15）与右缘窗户窗帘（x=51-55），第二排居中对齐
+    const row1 = PLUSH_ORDER.slice(0, 4), row2 = PLUSH_ORDER.slice(4);
+    let x = 16;
+    for (let i = 0; i < row1.length; i++) {
+      drawPlushCell(ctx, row1[i], x, 72);
+      x += PLUSH_CELL_W + PLUSH_GAP;
+    }
+    // 第二排：整体宽度 3*7+2*2=25px，与第一排（34px，中心 x=33）同中心
+    x = 21;
+    for (let i = 0; i < row2.length; i++) {
+      drawPlushCell(ctx, row2[i], x, 84);
+      x += PLUSH_CELL_W + PLUSH_GAP;
+    }
   }
 
   function drawWorkspaceDecor(ctx, st) {
