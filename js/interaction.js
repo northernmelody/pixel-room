@@ -11,6 +11,7 @@
   let computerOpen = false;
   let computerMode = null;
   let compCtx = null;
+  let nextComputerDrawAt = -Infinity;
 
   // 快速开关灯检测（5 秒滑动窗口 + 30 秒冷却）
   let toggleTimes = [];
@@ -137,6 +138,7 @@
 
   function openComputer() {
     computerOpen = true;
+    nextComputerDrawAt = -Infinity;
     computerMode = P.Character.screenMode();
     document.getElementById('computer-modal').classList.remove('hidden');
     fitComputer();
@@ -150,6 +152,7 @@
   }
 
   function cycleComputer() {
+    nextComputerDrawAt = -Infinity;
     computerMode = P.Character.cycleScreen();
     updateCaption();
     if (P.Audio) P.Audio.ui();
@@ -166,31 +169,39 @@
   // 放大屏幕绘制（主循环调用）
   function drawComputer(t) {
     if (!compCtx) return;
+    // 用累计截止时间在 60 Hz 主循环中交替跨 2/3 帧，长期平均稳定在约 24 FPS。
+    const computerFrameMs = 1000 / 24;
+    if (nextComputerDrawAt === -Infinity) nextComputerDrawAt = t;
+    if (t < nextComputerDrawAt) return;
+    nextComputerDrawAt += computerFrameMs;
+    // 标签页恢复后丢弃过期截止时间，避免连续补绘。
+    if (t - nextComputerDrawAt > computerFrameMs * 2) nextComputerDrawAt = t + computerFrameMs;
     const mode = computerMode || P.Character.screenMode();
     const ctx = compCtx;
-    ctx.setTransform(2, 0, 0, 2, 0, 0); // 640x400 → 320x200 逻辑
-    ctx.clearRect(0, 0, 320, 200);
+    ctx.setTransform(2, 0, 0, 2, 0, 0); // 800x500 → 400x250 逻辑
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 400, 250);
     // 桌面背景
     ctx.fillStyle = '#151a28';
-    ctx.fillRect(0, 0, 320, 200);
+    ctx.fillRect(0, 0, 400, 250);
     // 屏幕外壳
     ctx.fillStyle = '#2a2d3a';
-    ctx.fillRect(24, 20, 272, 158);
+    ctx.fillRect(28, 20, 344, 202);
     ctx.fillStyle = '#3a3e4e';
-    ctx.fillRect(24, 20, 272, 3);
+    ctx.fillRect(28, 20, 344, 3);
     // 屏幕内容
     ctx.fillStyle = '#0a0c14';
-    ctx.fillRect(26, 24, 268, 148);
-    P.RoomLayout.drawMonitorContent(ctx, mode, t, 28, 26, 264, 144);
+    ctx.fillRect(30, 24, 340, 192);
+    P.RoomLayout.drawMonitorContent(ctx, mode, t / 1000, 34, 28, 332, 180);
     // 支架
     ctx.fillStyle = '#2e2e3a';
-    ctx.fillRect(156, 178, 8, 6);
-    ctx.fillRect(148, 184, 24, 4);
+    ctx.fillRect(196, 222, 8, 8);
+    ctx.fillRect(186, 230, 28, 5);
     // 桌面
     ctx.fillStyle = '#8a5a34';
-    ctx.fillRect(0, 190, 320, 10);
+    ctx.fillRect(0, 238, 400, 12);
     ctx.fillStyle = '#9c6a40';
-    ctx.fillRect(0, 190, 320, 2);
+    ctx.fillRect(0, 238, 400, 2);
   }
 
   P.Interaction = {

@@ -30,7 +30,7 @@
     workspace: {
       window: { x: 138, y: 54, w: 16, h: 32 },
       bookshelf: { x: 86, y: 58, w: 16, h: 30 },
-      poster: { x: 110, y: 58, w: 8, h: 10 },
+      poster: { x: 109, y: 57, w: 12, h: 15 },
       socket: { x: 124, y: 92, w: 5, h: 8 },
       desk: { x: 104, y: 108, w: 40, h: 20 },
       monitor: { x: 106, y: 84, w: 18, h: 24 },
@@ -82,6 +82,43 @@
   const PIXEL_FONT = {
     M: [9, 13, 11, 9, 9],   // #..# / ##.# / #.## / #..# / #..#
     O: [6, 9, 9, 9, 6]      // .##. / #..# / #..# / #..# / .##.
+  };
+  const CHAT_COUPLE_BG = typeof Image !== 'undefined' ? new Image() : null;
+  if (CHAT_COUPLE_BG) CHAT_COUPLE_BG.src = 'assets/chat-couple-bg.png';
+
+  const PYTHON_DEMO = [
+    'from collections import deque',
+    '',
+    'def shortest_path(grid, start, goal):',
+    '    """Breadth-first search on a tile map."""',
+    '    queue = deque([(start, [start])])',
+    '    visited = {start}',
+    '',
+    '    while queue:',
+    '        (x, y), path = queue.popleft()',
+    '        if (x, y) == goal:',
+    '            return path',
+    '',
+    '        for dx, dy in ((1, 0), (-1, 0),',
+    '                       (0, 1), (0, -1)):',
+    '            nxt = (x + dx, y + dy)',
+    '            nx, ny = nxt',
+    '            inside = (0 <= ny < len(grid) and',
+    '                      0 <= nx < len(grid[0]))',
+    '            if inside and grid[ny][nx] != "#":',
+    '                if nxt not in visited:',
+    '                    visited.add(nxt)',
+    '                    queue.append((nxt, path + [nxt]))',
+    '',
+    '    return None',
+    '',
+    'route = shortest_path(level, player, exit_pos)',
+    'print(f"route found: {len(route)} steps")'
+  ].join('\n');
+
+  const CHAT_NAME_FONT = {
+    M: ['10001', '11011', '10101', '10001', '10001', '10001', '10001'],
+    O: ['01110', '10001', '10001', '10001', '10001', '10001', '01110']
   };
   function shade(hex, f) {
     const n = parseInt(hex.slice(1), 16);
@@ -604,16 +641,39 @@
 
   function drawWorkspaceDecor(ctx, st) {
     const R = FURN.workspace;
-    // 小海报
+    // 长颈鹿相框：12x15 逻辑像素，画芯为 10x13
     const p = R.poster;
-    px(ctx, p.x, p.y, p.w, p.h, '#b8b0a0');
-    px(ctx, p.x, p.y, p.w, 1, '#d8d0c0');
-    px(ctx, p.x + 1, p.y + 1, p.w - 2, p.h - 2, '#2a3a4a');
-    // 海报内容：抽象几何
-    px(ctx, p.x + 2, p.y + 3, 4, 3, '#5ac8ff');
-    px(ctx, p.x + 3, p.y + 2, 2, 1, '#ffd05a');
-    px(ctx, p.x + 2, p.y + 6, 5, 2, '#ff8a9a');
-    px(ctx, p.x + 4, p.y + 4, 1, 1, '#ffffff');
+    px(ctx, p.x, p.y, p.w, p.h, '#59493f');
+    px(ctx, p.x + 1, p.y, p.w - 2, 1, '#9a7a5d');
+    px(ctx, p.x + 1, p.y + 1, p.w - 2, p.h - 2, '#78a4b5');
+    const giraffePalette = {
+      S: '#78a4b5', // 天空
+      T: '#e0a74a', // 长颈鹿主体
+      L: '#f2c565', // 受光面
+      B: '#8a4d2f', // 斑点
+      D: '#3b3029', // 角、眼睛和蹄
+      G: '#69834b'  // 草地
+    };
+    const giraffePixels = [
+      'SSSSDSSDSS',
+      'SSSSTSTSSS',
+      'SSSTTTTTDS',
+      'SSTTLDTDDS',
+      'SSSSTTDSSS',
+      'SSSSTTSSSS',
+      'SSSSTBSSSS',
+      'SSSSTTSSSS',
+      'SSTTTTTTSS',
+      'STTBTBTTTS',
+      'GTTTLTTTGG',
+      'GGTSSTTGGG',
+      'GGDSSDGGGG'
+    ];
+    for (let y = 0; y < giraffePixels.length; y++) {
+      for (let x = 0; x < giraffePixels[y].length; x++) {
+        px(ctx, p.x + 1 + x, p.y + 1 + y, 1, 1, giraffePalette[giraffePixels[y][x]]);
+      }
+    }
     // 插座 + 线缆
     const s = R.socket;
     px(ctx, s.x, s.y, s.w, s.h, '#d8d8de');
@@ -1530,6 +1590,221 @@
   // ============================================================
   // 屏幕内容（与放大弹窗共用）
   // ============================================================
+  function drawLargeCoding(ctx, t, x, y, w, h) {
+    px(ctx, x, y + 4, w, h - 4, '#101522');
+    px(ctx, x, y + 4, 25, h - 4, '#161c2a');
+    px(ctx, x + 25, y + 4, 1, h - 4, '#2a3448');
+    px(ctx, x, y + 4, w, 10, '#20293a');
+    px(ctx, x + 5, y + 7, 34, 5, '#111722');
+    ctx.font = '6px Consolas, monospace';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#9fb3c8';
+    ctx.fillText('pathfinder.py  ×', x + 8, y + 6);
+
+    const cycle = PYTHON_DEMO.length + 90;
+    const typedCount = Math.min(PYTHON_DEMO.length, Math.floor(t * 38) % cycle);
+    const typed = PYTHON_DEMO.slice(0, typedCount);
+    const codeLines = typed.split('\n');
+    const lineH = 9;
+    const maxLines = Math.max(1, Math.floor((h - 25) / lineH));
+    const first = Math.max(0, codeLines.length - maxLines);
+    for (let i = first; i < codeLines.length; i++) {
+      const ly = y + 17 + (i - first) * lineH;
+      const line = codeLines[i];
+      ctx.fillStyle = '#52627a';
+      ctx.fillText(String(i + 1).padStart(2, ' '), x + 7, ly);
+      if (/^\s*(def|from|import|while|for|if|return)\b/.test(line)) ctx.fillStyle = '#c792ea';
+      else if (/^\s*["']/.test(line)) ctx.fillStyle = '#c3e88d';
+      else if (/print|append|popleft|add/.test(line)) ctx.fillStyle = '#82aaff';
+      else ctx.fillStyle = '#d6deeb';
+      ctx.fillText(line, x + 30, ly);
+    }
+    const current = codeLines[codeLines.length - 1] || '';
+    if (Math.floor(t * 4) % 2 === 0) {
+      const cursorX = Math.min(x + w - 5, x + 30 + ctx.measureText(current).width);
+      const cursorY = y + 17 + (codeLines.length - 1 - first) * lineH;
+      px(ctx, Math.floor(cursorX), cursorY, 1, 7, '#f8f8f2');
+    }
+    px(ctx, x, y + h - 8, w, 8, '#17324d');
+    ctx.fillStyle = '#b9d8f2';
+    ctx.fillText('Python 3.12    UTF-8    Ln ' + codeLines.length + '    typing 38 chars/s', x + 7, y + h - 7);
+  }
+
+  function drawLargeVideo(ctx, t, x, y, w, h) {
+    px(ctx, x, y + 4, w, h - 4, '#20283a');
+    px(ctx, x, y + 4, w, Math.floor((h - 20) * 0.62), '#6f8296');
+    px(ctx, x, y + Math.floor(h * 0.62), w, Math.floor(h * 0.3), '#a86f48');
+    for (let i = 0; i < 7; i++) px(ctx, x, y + Math.floor(h * 0.62) + i * 10, w, 1, '#805136');
+    // 窗户与沙发构成追逐场景
+    px(ctx, x + 15, y + 15, 54, 45, '#d9c49d');
+    px(ctx, x + 19, y + 19, 46, 37, '#89b8d0');
+    px(ctx, x + 41, y + 19, 2, 37, '#d9c49d');
+    px(ctx, x + 19, y + 36, 46, 2, '#d9c49d');
+    px(ctx, x + w - 83, y + 55, 66, 38, '#596c76');
+    px(ctx, x + w - 88, y + 80, 76, 15, '#465761');
+
+    const track = Math.max(20, w - 110);
+    const run = Math.floor((t * 32) % track);
+    const catX = x + 12 + run;
+    const mouseX = catX + 49;
+    const groundY = y + h - 28;
+    const hop = Math.floor(t * 8) % 2;
+    // 猫：灰蓝身体、白脸和高举尾巴
+    px(ctx, catX, groundY - 15 - hop, 22, 10, '#64788d');
+    px(ctx, catX + 15, groundY - 22 - hop, 12, 11, '#73889d');
+    px(ctx, catX + 16, groundY - 25 - hop, 4, 4, '#4b5d70');
+    px(ctx, catX + 23, groundY - 25 - hop, 4, 4, '#4b5d70');
+    px(ctx, catX + 19, groundY - 18 - hop, 7, 5, '#d8d5c9');
+    px(ctx, catX + 20, groundY - 20 - hop, 2, 2, '#101820');
+    px(ctx, catX + 25, groundY - 20 - hop, 2, 2, '#101820');
+    px(ctx, catX + 27, groundY - 17 - hop, 3, 1, '#e7b1a6');
+    px(ctx, catX + 2, groundY - 7, 5, 5, '#4b5d70');
+    px(ctx, catX + 15, groundY - 7, 5, 5, '#4b5d70');
+    px(ctx, catX - 7, groundY - 22 - hop, 4, 13, '#64788d');
+    px(ctx, catX - 4, groundY - 25 - hop, 4, 5, '#64788d');
+    // 老鼠：圆耳、身体、奶酪和细尾巴
+    px(ctx, mouseX, groundY - 10, 13, 8, '#9b6a54');
+    px(ctx, mouseX + 8, groundY - 14, 9, 9, '#b57b61');
+    px(ctx, mouseX + 9, groundY - 17, 5, 5, '#d49a85');
+    px(ctx, mouseX + 15, groundY - 11, 2, 2, '#17151a');
+    px(ctx, mouseX + 17, groundY - 8, 3, 1, '#e4b7a4');
+    px(ctx, mouseX - 7, groundY - 6, 8, 1, '#d49a85');
+    px(ctx, mouseX + 20, groundY - 6, 7, 6, '#e6bd49');
+    px(ctx, mouseX + 22, groundY - 4, 2, 2, '#b98a2f');
+    for (let i = 0; i < 3; i++) px(ctx, catX - 8 - i * 8, groundY - 4 - i, 4, 1, '#d5c6aa');
+
+    px(ctx, x + 8, y + h - 10, w - 16, 2, '#3a4156');
+    px(ctx, x + 8, y + h - 10, Math.floor((w - 16) * ((t * 0.035) % 1)), 2, '#ff5a7a');
+    ctx.font = '6px sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#eef3ff';
+    ctx.fillText('CAT & MOUSE · EP. 07', x + 9, y + h - 20);
+  }
+
+  function drawChatName(ctx, x, y) {
+    let ox = x;
+    const name = 'MOMO';
+    for (let ci = 0; ci < name.length; ci++) {
+      const glyph = CHAT_NAME_FONT[name[ci]];
+      for (let gy = 0; gy < glyph.length; gy++) {
+        for (let gx = 0; gx < glyph[gy].length; gx++) {
+          if (glyph[gy][gx] === '1') px(ctx, ox + gx * 2, y + gy * 2, 2, 2, '#b9d5ff');
+        }
+      }
+      ox += 12;
+    }
+  }
+
+  function drawLargeChat(ctx, t, x, y, w, h) {
+    const top = y + 4;
+    if (CHAT_COUPLE_BG && CHAT_COUPLE_BG.complete && CHAT_COUPLE_BG.naturalWidth) {
+      const srcH = CHAT_COUPLE_BG.naturalWidth * ((h - 4) / w);
+      const sy = Math.max(0, (CHAT_COUPLE_BG.naturalHeight - srcH) / 2);
+      ctx.drawImage(CHAT_COUPLE_BG, 0, sy, CHAT_COUPLE_BG.naturalWidth, Math.min(srcH, CHAT_COUPLE_BG.naturalHeight), x, top, w, h - 4);
+    } else {
+      px(ctx, x, top, w, h - 4, '#5f4b68');
+      px(ctx, x, top + Math.floor(h * 0.55), w, Math.floor(h * 0.45), '#c56b49');
+    }
+    ctx.fillStyle = 'rgba(7,12,24,0.36)';
+    ctx.fillRect(x, top, w, h - 4);
+    ctx.fillStyle = 'rgba(15,22,38,0.92)';
+    ctx.fillRect(x, top, w, 20);
+    drawChatName(ctx, x + 9, top + 3);
+    px(ctx, x + 61, top + 6, 4, 4, '#4ae07a');
+    ctx.font = '6px "Microsoft YaHei", sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#8fa2ba';
+    ctx.fillText('在线 · 刚刚', x + 69, top + 5);
+
+    const messages = [
+      { mine: false, y: 29, w: 112, text: '今天也在写代码吗？' },
+      { mine: true,  y: 57, w: 132, text: '嗯，刚修好一个小 bug 🐛' },
+      { mine: false, y: 85, w: 126, text: '辛苦啦，晚上一起散步？' },
+      { mine: true,  y: 113, w: 118, text: '好呀！日落前见 🌇' }
+    ];
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      const bx = x + 10;
+      ctx.fillStyle = m.mine ? 'rgba(51,91,68,0.94)' : 'rgba(34,48,77,0.94)';
+      ctx.fillRect(bx, top + m.y, m.w, 20);
+      ctx.fillRect(bx + 4, top + m.y + 20, 7, 3);
+      ctx.fillStyle = '#f0f4ff';
+      ctx.fillText(m.text, bx + 7, top + m.y + 6);
+    }
+    // 像素表情包：猫脸 + 爱心
+    const sx = x + 145, sy = top + 88 + (Math.floor(t * 2) % 2);
+    px(ctx, sx, sy + 3, 18, 15, '#f2c35b');
+    px(ctx, sx + 1, sy, 5, 6, '#f2c35b');
+    px(ctx, sx + 12, sy, 5, 6, '#f2c35b');
+    px(ctx, sx + 4, sy + 7, 3, 3, '#2a2530');
+    px(ctx, sx + 11, sy + 7, 3, 3, '#2a2530');
+    px(ctx, sx + 8, sy + 11, 2, 2, '#d56b67');
+    px(ctx, sx + 20, sy + 2, 4, 4, '#ff718c');
+    px(ctx, sx + 24, sy + 2, 4, 4, '#ff718c');
+    px(ctx, sx + 22, sy + 5, 4, 4, '#ff718c');
+
+    ctx.fillStyle = 'rgba(15,22,38,0.9)';
+    ctx.fillRect(x + 7, y + h - 13, w - 14, 9);
+    ctx.fillStyle = '#8795aa';
+    ctx.fillText('输入消息…', x + 13, y + h - 11);
+    if (Math.floor(t * 2) % 2 === 0) px(ctx, x + 48, y + h - 11, 1, 6, '#ffffff');
+  }
+
+  function drawTank(ctx, tx, ty, color, dir) {
+    px(ctx, tx, ty, 12, 12, '#27302a');
+    px(ctx, tx, ty + 2, 3, 8, color);
+    px(ctx, tx + 9, ty + 2, 3, 8, color);
+    px(ctx, tx + 3, ty + 3, 6, 6, color);
+    px(ctx, tx + 5, ty + 5, 2, 2, '#d8d6a8');
+    if (dir === 'up') px(ctx, tx + 5, ty - 5, 2, 8, color);
+    else if (dir === 'down') px(ctx, tx + 5, ty + 9, 2, 8, color);
+  }
+
+  function drawLargeTankGame(ctx, t, x, y, w, h) {
+    px(ctx, x, y + 4, w, h - 4, '#101610');
+    px(ctx, x + 3, y + 17, w - 6, h - 22, '#1a281d');
+    ctx.font = '7px Consolas, monospace';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#f5db67';
+    ctx.fillText('1P  004280      HI  012600      LIFE × 3', x + 8, y + 7);
+    const ax = x + 6, ay = y + 22, aw = w - 12, ah = h - 29;
+    // 砖墙、钢墙、河流和基地
+    for (let i = 0; i < 7; i++) {
+      const wx = ax + 30 + i * 38;
+      const wy = ay + 18 + ((i * 29) % Math.max(30, ah - 55));
+      px(ctx, wx, wy, 20, 10, '#8e4934');
+      px(ctx, wx, wy + 4, 20, 1, '#c46b49');
+      px(ctx, wx + 6, wy, 1, 10, '#542d27');
+      px(ctx, wx + 14, wy, 1, 10, '#542d27');
+    }
+    px(ctx, ax + Math.floor(aw * 0.46), ay + 20, 18, 54, '#285b77');
+    for (let i = 0; i < 6; i++) px(ctx, ax + Math.floor(aw * 0.46), ay + 23 + i * 9, 18, 2, '#4b8fa5');
+    px(ctx, ax + aw - 35, ay + 28, 22, 14, '#8a9298');
+    px(ctx, ax + aw - 33, ay + 30, 18, 2, '#c1c8cc');
+
+    const playerX = ax + Math.floor(aw * 0.55) + Math.round(Math.sin(t * 1.7) * 22);
+    const playerY = ay + ah - 17;
+    drawTank(ctx, playerX, playerY, '#6fcf78', 'up');
+    const enemy1X = ax + 18 + Math.floor((t * 14) % Math.max(20, aw - 70));
+    const enemy2X = ax + aw - 42 - Math.floor((t * 10) % Math.max(20, aw - 90));
+    drawTank(ctx, enemy1X, ay + 8, '#e05d50', 'down');
+    drawTank(ctx, enemy2X, ay + 48, '#e7b64d', 'down');
+    const bulletY = playerY - Math.floor((t * 45) % Math.max(20, ah - 20));
+    px(ctx, playerX + 5, bulletY, 2, 4, '#f6f1b5');
+    const boom = Math.floor(t * 3) % 5;
+    if (boom <= 1) {
+      const bx = ax + Math.floor(aw * 0.72), by = ay + Math.floor(ah * 0.38);
+      px(ctx, bx - 5, by, 14, 4, '#ff9d32');
+      px(ctx, bx, by - 5, 4, 14, '#ffcf4d');
+      px(ctx, bx - 2, by - 2, 8, 8, '#fff29a');
+    }
+    // 鹰形基地
+    const baseX = ax + Math.floor(aw * 0.18), baseY = ay + ah - 18;
+    px(ctx, baseX, baseY, 15, 15, '#6d6659');
+    px(ctx, baseX + 3, baseY + 4, 9, 7, '#d4c26a');
+    px(ctx, baseX + 6, baseY + 2, 3, 11, '#332f2a');
+  }
+
   function drawMonitorContent(ctx, mode, t, x, y, w, h) {
     // 关键：屏幕内容的所有坐标取整，避免半像素坐标触发抗锯齿产生条纹
     x = Math.floor(x);
@@ -1555,6 +1830,14 @@
     px(ctx, x + 4, y + 1, 1, 1, '#5affa0');
     px(ctx, x + 6, y + 1, 1, 1, '#ffd05a');
     px(ctx, x + w - 3, y + 1, 2, 1, '#8a94a8');
+
+    // 放大弹窗使用更高分辨率的专用界面；室内小屏继续使用下方轻量版本。
+    if (w >= 100) {
+      if (mode === 'coding') { drawLargeCoding(ctx, t, x, y, w, h); return; }
+      if (mode === 'video') { drawLargeVideo(ctx, t, x, y, w, h); return; }
+      if (mode === 'chat') { drawLargeChat(ctx, t, x, y, w, h); return; }
+      if (mode === 'slacking') { drawLargeTankGame(ctx, t, x, y, w, h); return; }
+    }
 
     switch (mode) {
       case 'coding': {
