@@ -97,8 +97,10 @@
     const ff = P.Time.isFreelance(bj) ? '🎨 自由职业日' : '💼 工作日';
 
     els.bj.textContent = pad2(bj.hourInt) + ':' + pad2(bj.min) + ':' + pad2(bj.sec);
-    const tzH = loc.tzMin >= 0 ? '+' + Math.floor(loc.tzMin / 60) : '' + Math.ceil(loc.tzMin / 60);
-    els.local.textContent = '本地 ' + pad2(loc.hourInt) + ':' + pad2(loc.min) + ':' + pad2(loc.sec) + '  UTC' + tzH;
+    const tzSign = loc.tzMin >= 0 ? '+' : '-';
+    const tzAbs = Math.abs(loc.tzMin);
+    const tzText = tzSign + pad2(Math.floor(tzAbs / 60)) + ':' + pad2(tzAbs % 60);
+    els.local.textContent = '本地 ' + pad2(loc.hourInt) + ':' + pad2(loc.min) + ':' + pad2(loc.sec) + '  UTC' + tzText;
     // 弹唱中：活动行显示当前曲目
     let actName = act.name;
     if (P.Character && P.Character.guitarActive && P.Character.guitarActive()) {

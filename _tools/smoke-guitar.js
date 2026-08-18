@@ -132,9 +132,10 @@ assert(Math.abs(dbg.x - 64) < 1, 'character ended back at guitar spot x=64, got 
 // DOM 歌词面板：7 行按序显示 + 结束隐藏
 const songLyrics = lyricCalls.filter(function (c) { return !c.hide; });
 assert(songLyrics.length === 7, 'showLyric called 7 times, got ' + songLyrics.length);
-assert(songLyrics[0] && songLyrics[0].title === '河岸', 'lyric title = 河岸, got ' + (songLyrics[0] || {}).title);
-assert(songLyrics[0] && songLyrics[0].line === '过了很久终于我愿抬头看', 'first line correct, got ' + (songLyrics[0] || {}).line);
-assert(songLyrics[6] && songLyrics[6].line === '你看', 'last line = 你看, got ' + (songLyrics[6] || {}).line);
+const riverSong = P.Songs.find(s => s.id === 'river_dream');
+assert(songLyrics[0] && songLyrics[0].title === riverSong.title, 'lyric title follows song data, got ' + (songLyrics[0] || {}).title);
+assert(songLyrics[0] && songLyrics[0].line === riverSong.lyrics[0], 'first line follows song data, got ' + (songLyrics[0] || {}).line);
+assert(songLyrics[riverSong.lyrics.length - 1] && songLyrics[riverSong.lyrics.length - 1].line === riverSong.lyrics[riverSong.lyrics.length - 1], 'last line follows song data, got ' + (songLyrics[riverSong.lyrics.length - 1] || {}).line);
 assert(lyricCalls.length === 8 && lyricCalls[7].hide, 'hideLyric called at end');
 // ---- 6. 结束后重新同步回工作（x=147） ----
 dbg = Char._debug();

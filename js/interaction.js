@@ -16,6 +16,11 @@
   let toggleTimes = [];
   let lastScareAt = 0;
 
+  function todayKey() {
+    const tp = P.Time.now();
+    return tp.year + '-' + tp.month + '-' + tp.day;
+  }
+
   function init(canvasEl) {
     canvas = canvasEl;
     canvas.addEventListener('click', onClick);
@@ -74,7 +79,8 @@
     }
     // 猫
     const cp = P.Cat.pos();
-    if (Math.abs(p.x - cp.x) <= 9 && p.y >= FLOOR - 16 && p.y <= FLOOR + 2) {
+    const catFloor = cp.y == null ? FLOOR : cp.y;
+    if (Math.abs(p.x - cp.x) <= 9 && p.y >= catFloor - 16 && p.y <= catFloor + 2) {
       P.Cat.pet();
       if (P.UI) P.UI.toast('🐱 喵～ 摸到猫了！');
       return;
@@ -109,6 +115,7 @@
     if (r.lamp === 'ceiling') st.lamps.ceiling[r.room] = !st.lamps.ceiling[r.room];
     else st.lamps[r.lamp] = !st.lamps[r.lamp];
     st.lamps.touched = true;
+    st.lamps.touchedDate = todayKey();
     P.Storage.save();
     if (P.Audio) P.Audio.lamp();
     const lampOn = r.lamp === 'ceiling' ? st.lamps.ceiling[r.room] : st.lamps[r.lamp];

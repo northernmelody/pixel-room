@@ -8,7 +8,7 @@
 
   const DEFAULTS = {
     v: 1,
-    lamps: { ceiling: [false, false, false, false], deskLamp: false, nightLamp: false, touched: false },
+    lamps: { ceiling: [false, false, false, false], deskLamp: false, nightLamp: false, touched: false, touchedDate: '' },
     sound: false,          // 默认静音
     volume: 60,
     petTotal: 0,
@@ -25,7 +25,8 @@
       bowl: 3,              // 猫粮碗 0-3（3=满）
       dogBowl: 3,           // 狗粮碗 0-3（3=满）
       dishes: 0,            // 水槽里的碗 0/1
-      pkg: { state: 'none', date: '', openIn: 0, item: null } // 快递箱 none/arrived/opened
+      collectibles: [],     // 已拆出的快递小物件（最多 5 种）
+      pkg: { state: 'none', date: '', openIn: 0, item: null, cooldown: 0 } // 快递箱 none/arrived；opened 为旧存档迁移态
     }
   };
 
@@ -52,6 +53,28 @@
 
   function dateKey(tp) { return tp.year + '-' + tp.month + '-' + tp.day; }
 
+  function dayNumber(key) {
+    const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(key || '');
+    return m ? Math.floor(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86400000) : null;
+  }
+
+  function addCollectible(items, id) {
+    if (!id || PKG_ITEM_IDS.indexOf(id) < 0) return;
+    if (!Array.isArray(items.collectibles)) items.collectibles = [];
+    if (items.collectibles.indexOf(id) < 0) items.collectibles.push(id);
+  }
+
+  function openPackage(items, pkg) {
+    const remaining = PKG_ITEM_IDS.filter(function (id) { return items.collectibles.indexOf(id) < 0; });
+    const pool = remaining.length ? remaining : PKG_ITEM_IDS;
+    addCollectible(items, pool[(Math.random() * pool.length) | 0]);
+    pkg.state = 'none';
+    pkg.date = '';
+    pkg.openIn = 0;
+    pkg.item = null;
+    pkg.cooldown = 2; // 拆开后至少隔两天再出现下一件
+  }
+
   function save(immediate) {
     if (saveTimer) clearTimeout(saveTimer);
     const doSave = function () {
@@ -60,28 +83,37 @@
     if (immediate) doSave(); else saveTimer = setTimeout(doSave, 400);
   }
 
-  // 跨天更新：猫粮续满 / 快递箱出现与拆开（每日低概率）
+  // 跨天更新：猫粮续满 / 快递箱出现与拆开；按真实经过天数逐日推进
   function ensureDaily() {
     const tp = P.Time.now();
     const today = dateKey(tp);
     const items = state.items;
     if (items.date === today) return;
+    if (!Array.isArray(items.collectibles)) items.collectibles = [];
+    const previousDay = dayNumber(items.date);
+    const currentDay = dayNumber(today);
+    const elapsedDays = previousDay === null || currentDay === null ? 1 : Math.max(1, Math.min(3650, currentDay - previousDay));
     // 猫粮碗/狗粮碗：第二天早上自动续满
     items.bowl = 3;
     items.dogBowl = 3;
-    // 快递箱：偶尔出现（平均每周 1-2 次），几天后被拆开
+    // 兼容旧存档：过去的 opened/item 转成永久小物件，再进入下一轮快递周期。
     const pkg = items.pkg;
-    if (pkg.state === 'none') {
-      if (Math.random() < 0.29) {
+    if (pkg.state === 'opened') {
+      addCollectible(items, pkg.item);
+      pkg.state = 'none';
+      pkg.item = null;
+      pkg.cooldown = 2;
+    }
+    for (let day = 0; day < elapsedDays; day++) {
+      if (pkg.state === 'arrived') {
+        pkg.openIn = Math.max(0, Number(pkg.openIn) || 0) - 1;
+        if (pkg.openIn <= 0) openPackage(items, pkg);
+      } else if ((pkg.cooldown || 0) > 0) {
+        pkg.cooldown--;
+      } else if (Math.random() < 0.29) {
         pkg.state = 'arrived';
         pkg.date = today;
-        pkg.openIn = 1 + ((Math.random() * 3) | 0); // 1-3 天后拆开
-      }
-    } else if (pkg.state === 'arrived') {
-      pkg.openIn = (pkg.openIn || 1) - 1;
-      if (pkg.openIn <= 0) {
-        pkg.state = 'opened';
-        pkg.item = PKG_ITEM_IDS[(Math.random() * PKG_ITEM_IDS.length) | 0];
+        pkg.openIn = 1 + ((Math.random() * 3) | 0); // 后续 1-3 个跨日更新后拆开
       }
     }
     items.date = today;
@@ -127,6 +159,8 @@
         const tp = P.Time.now();
         const dayKey = tp.year + '-' + tp.month + '-' + tp.day;
         if (state.petDay !== dayKey) { state.petDay = dayKey; state.petToday = 0; }
+        // v1 旧存档只有 touched 布尔值：把它迁移成“仅当天有效”的手动灯光覆盖。
+        if (state.lamps.touched && !state.lamps.touchedDate) state.lamps.touchedDate = dayKey;
       }
       return state;
     },

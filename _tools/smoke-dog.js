@@ -7,6 +7,21 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 
+function seededRandom(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// 不修改宿主全局 Math；初始化和整个状态机共享同一条可复现随机序列。
+const testMath = Object.create(Math);
+testMath.random = seededRandom(0xC0FFEE);
+
 function makeCtx() {
   const ctx = {
     globalAlpha: 1, fillStyle: '#000', strokeStyle: '#000',
@@ -45,7 +60,7 @@ const sandbox = {
   },
   localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
   performance: { now: () => Date.now() },
-  console, Date, Math, JSON, setTimeout, clearTimeout,
+  console, Date, Math: testMath, JSON, setTimeout, clearTimeout,
   requestAnimationFrame() {}
 };
 sandbox.window.window = sandbox.window;
@@ -84,12 +99,11 @@ function assert(cond, msg) { if (!cond) failed.push(msg); }
 Dog.init();
 assert(!!Dog.pos(), 'dog initialized');
 
-// ---- 状态机遍历：确定性扫描 Math.random ----
+// ---- 状态机遍历：有状态 seeded PRNG，包含 init 阶段，结果完全可复现 ----
 const seen = {};
 let throws = null;
 try {
   for (let i = 0; i < 40000; i++) {
-    sandbox.Math.random = (() => { const v = ((i * 7919) % 10000) / 10000; return () => v; })();
     Dog.update(0.05);
     const s = Dog.state();
     seen[s] = (seen[s] || 0) + 1;
@@ -124,7 +138,6 @@ storageState.items.dogBowl = 3;   // 状态遍历阶段可能已吃掉，重置
 Dog.eatFood();
 let eatDone = false;
 for (let i = 0; i < 600 && !eatDone; i++) {
-  sandbox.Math.random = () => 0.5;
   Dog.update(0.05);
   if (storageState.items.dogBowl === 2) eatDone = true;
 }
@@ -137,7 +150,6 @@ const r2 = Dog.interact();
 assert(r2 === 'follow', 'second interact within 4s -> follow, got ' + r2);
 
 // ---- 跟随移动 ----
-sandbox.Math.random = () => 0.5;
 Dog.followCharacter();
 const before = Dog.pos().x;
 let moved = false;
@@ -149,7 +161,6 @@ P.Time.getSchedule = () => ({ id: 'sleep' });
 Dog.bark(); // 进入一个短状态
 let sleepCount = 0;
 for (let i = 0; i < 3000; i++) {
-  sandbox.Math.random = (() => { const v = ((i * 7919) % 10000) / 10000; return () => v; })();
   Dog.update(0.05);
   if (Dog.state() === 'sleep') sleepCount++;
 }
@@ -158,7 +169,7 @@ assert(sleepCount > 0, 'night sleep schedule should still produce sleep state');
 // ---- 空碗不吃 ----
 storageState.items.dogBowl = 0;
 Dog.eatFood(); // 外部强制吃，碗空时不应扣成负数
-for (let i = 0; i < 600; i++) { sandbox.Math.random = () => 0.5; Dog.update(0.05); }
+for (let i = 0; i < 600; i++) Dog.update(0.05);
 assert(storageState.items.dogBowl === 0, 'dogBowl should never go negative (=' + storageState.items.dogBowl + ')');
 
 if (failed.length) {

@@ -16,9 +16,9 @@
     const availW = window.innerWidth - 24;
     const availH = window.innerHeight - 24;
     let w = Math.min(availW, availH * 16 / 9);
-    w = Math.max(320, Math.floor(w / PIXEL) * PIXEL);
+    w = Math.max(PIXEL, Math.floor(w / PIXEL) * PIXEL);
     let h = Math.round(w * 9 / 16);
-    h = Math.max(180, Math.floor(h / PIXEL) * PIXEL);
+    h = Math.max(PIXEL, Math.floor(h / PIXEL) * PIXEL);
     c.style.width = w + 'px';
     c.style.height = h + 'px';
   }

@@ -1,560 +1,161 @@
-# pixel-room 开发交接文档（handoff.md）
+# Pixel Room 开发交接
 
-> 项目：像素房间模拟器（Pixel Room）· 纯 JS + Canvas，无构建步骤
-> 仓库：C:\weylinhu\script\pixel-room（本任务期间初始化 git）
-> 阶段：视觉强化任务（星露谷式平面分区 + 精致光影）
+> 最后整理：2026-08-18
+>
+> 当前基线：`6647a6d` 之后的工作树修复版
+>
+> 技术栈：原生 JavaScript + Canvas 2D + CSS，无构建步骤、无运行时依赖
 
-## 1. 项目结构
+## 1. 项目现状
 
-| 文件 | 职责 |
+Pixel Room 是一个按北京时间运行的像素房间模拟器。页面展示卧室、工作区、卫生间和厨房，人物、猫、腊肠狗会根据时间和随机状态活动；天气、灯光、动态物品和声音共同影响场景。
+
+当前主要能力：
+
+- 北京时间、季节、日出日落和每日作息；支持 `?t=HH:MM` 固定调试时间。
+- 北京实时天气；请求失败时使用按日期生成的离线天气，失败后 5 分钟退避。
+- 四房间像素场景、昼夜光照、天气粒子和离屏静态缓存。
+- 人物洗漱、三餐、工作、休闲、睡眠和夜间活动状态机。
+- 猫的游走、攀爬、躲床底、抓窗帘、进食、连续摸猫和逗猫行为。
+- 腊肠狗的 9 种状态、进食、点击叫声和跟随行为。
+- 灯、电脑、人物、猫、狗和吉他点击交互。
+- 吉他随机弹唱、原创曲库、歌词面板、拨弦音效和行为恢复。
+- localStorage 保存灯光、声音、设置、宠物统计和动态物品。
+
+## 2. 目录与模块
+
+| 路径 | 职责 |
 | --- | --- |
-| index.html | 页面骨架 + 模块加载顺序 |
-| js/config.js | 全局配置常量 + 事件总线 + 调色板 |
-| js/timeSystem.js | 东八区时间/季节/作息/天体位置（支持 ?t=HH:MM 调试） |
-| js/storage.js | localStorage 存档（灯/音量/猫色/设置） |
-| js/weatherSystem.js | 北京天气 API 拉取 + 离线兜底 |
-| js/audio.js | WebAudio 程序化环境音（默认静音） |
-| js/lighting.js | 天空/太阳月亮/室内光照叠加 |
-| js/weatherEffects.js | 雨雪粒子 + 闪电 |
-| js/roomLayout.js | 房间结构 + 家具绘制（本任务重点改造） |
-| js/character.js | 小人状态机与动画 |
-| js/cat.js | 猫状态机与动画 |
-| js/renderer.js | 主渲染循环（本任务改为离屏缓存） |
-| js/interaction.js | 点击交互（猫/灯/电脑） |
-| js/ui.js | 时间/设置/提示 UI |
-| js/main.js | 入口主循环 |
-
-## 2. 上一个任务遗留的 4 个 Bug（验证 + 修复状态）
-
-> 用户提供权威 Bug 清单；经核对，修复已存在于基线代码中（上一会话已修），
-> 本任务逐项验证生效并留档。
-
-### Bug 1：mix() 只认 hex，链式混色时 rgb() 字符串被解析成黑 → 阴天/黎明天空过暗
-- 位置：js/lighting.js parseColor()
-- 现状：parseColor 同时解析 `#rrggbb` 与 `rgb(r,g,b)`（正则 `^rgb\(\d+,\s*\d+,\s*\d+\)$`），
-  链式 mix()（如 `mid = mix(mid, skyDawnMid, d2)`）不会再因 rgb() 解析失败而返回黑色。
-- 验证：黎明天空采样 rgb(38,74,123)（非黑），阴天混色正常。
-- 注意：rgba() 字符串不会被 parseColor 解析（返回黑），但当前所有 mix() 调用点输入均为
-  hex 或 mix 输出的 rgb()，无 rgba 输入，故无实际影响。
-
-### Bug 2：暮光因子深夜不归零 → 23:00 天空仍显示黄昏色
-- 位置：js/lighting.js compute()
-- 现状：`tw = max(0, 1 - |sunElev| * 6)`，当太阳负高度角大于 1/6（约 ±9.6° 外）时 tw=0。
-- 验证：23:00 → tw=0；0:00 → tw=0；5:30 → tw=0.602（晨昏正常出现）。
-  夜间天空采样 rgb(56,63,82)（深蓝灰，无黄昏粉橙）。
-
-### Bug 3：夜晚太阳高度恒为 0 → 无法计算负高度
-- 位置：js/timeSystem.js astro() 夜间分支
-- 现状：夜间 `sunElev = -Math.sin(PI * moonT)`，太阳在地平线以下有真实负高度。
-- 验证：0:00 → sunElev=-0.995；23:00 → sunElev=-0.914；12:00 → +0.998。
-
-### Bug 4：天气失败重试过频（离线时每 15 秒重试）
-- 位置：js/weatherSystem.js fetchWeather() / refresh()
-- 现状：fetchWeather 内部 15s 节流；refresh() 对 fallback 来源要求
-  `now - failedAt > 5 分钟` 才重试（5 分钟退避）。
-- 验证：代码审查确认双保险（15s 节流 + 5min 退避）。
-
-### 结论
-4 个 Bug 均已修复并验证生效，无需再改代码。后续提交基线即含修复。
-
-## 3. 本任务（视觉强化）目标
-
-1. 地面材质分区：四区域四种材质 + 门槛线
-2. 背景墙分层：墙纸/书架/瓷砖墙/护墙板 + 装饰
-3. 家具立体感：顶面亮 15-20% / 正面中 / 侧面暗 15-20% / 地面投影
-4. 窗户光斑：白天平行四边形投影，角度随太阳变化
-5. 深度分层：z=0 背景 / z=1 中景 / z=2 前景，严格 z-index 绘制
-6. 光影叠加：室内灯暖光晕 / 电脑屏幕冷光 / 月光 / 雨雪散射光
-7. 精致像素细节：噪点 / 1px 高光边 / 猫毛纹理 / 衣物褶皱
-8. 性能：离屏 Canvas 缓存静态画面，动态光影每帧更新
-
-约束：不改变功能逻辑（时间/作息/交互/天气/存档）；不引入外部图片素材。
-
-## 4. 开发记录
-
-- [x] 2026-08-16：git 初始化 + 基线提交（含 4 个 bug 修复）
-- [x] 验证 4 个 bug 修复生效
-- [x] 地面材质分区（四种材质 + 门槛线 + 像素噪点）
-- [x] 背景墙分层（墙纸/海报/瓷砖墙/护墙板/腰线/圆形镜/锅铲挂钩/置物架）
-- [x] 家具立体感（顶面+15-20% / 正面 / 侧面-15-20% / 地面软投影）
-- [x] 窗户光斑（08:00-18:30 平行四边形投影，角度随太阳缓慢变化，黄昏偏暖）
-- [x] 深度分层（z=0 结构/墙面装饰 → z=1 中景家具 → z=2 前景家具/小人/猫）
-- [x] 光影叠加（灯暖光晕+地面光池 / 屏幕冷光 / 00:00-05:00 月光光斑 / 雨雪散射光+柔暗角）
-- [x] 像素细节（墙地噪点 / 家具 1px 高光边 / 猫毛斑点条纹 / 衣物褶皱线）
-- [x] 离屏 Canvas 缓存静态场景（灯状态/季节变化时自动重建）
-- [x] 前后对比截图（_shots/before-*.png vs after-*.png）
-- [x] GitHub 仓库创建并推送
-
-## 5. 提交记录（git log）
-
-| Commit | 说明 |
-| --- | --- |
-| 230f4bd | chore: baseline commit before visual enhancement |
-| 6be8550 | docs: verify and document 4 legacy bug fixes + add screenshot analysis tool |
-| 6225b9b | feat: stardew-style visual enhancement（1249 行新增） |
-
-GitHub 仓库：https://github.com/northernmelody/pixel-room
-
-## 6. 视觉强化验证摘要（像素采样）
-
-| 项目 | 验证结果 |
-| --- | --- |
-| 四地面材质 | 卧室木(121,92,59) / 工作区地毯(97,104,120) / 卫生间瓷砖(163,178,185) / 厨房棋盘(86,55,43) — 全天可区分 |
-| 窗户光斑(午) | 卧室窗下地板比远处亮 +31 RGB；工作区 +19；厨房 +7（深色砖吸收） |
-| 月光(02:00) | 卧室窗下 +16，工作区 +7 且带蓝调 |
-| 屏幕冷光(工作) | 显示器前方区域蓝通道 +55，小人的脸区域蓝通道 +30 |
-| 缓存签名 | 灯状态变化时签名 summer|000000|1 → summer|000010|1 自动重建 |
-| 交互回归 | 电脑弹窗 / 摸猫 / 吊灯/台灯开关 全部正常
-
-## 5. 测试方法（无头浏览器 + 像素分析）
-
-- 本地服务：`python -m http.server 8137`（或任意静态服务器）
-- 时间调试：`index.html?t=HH:MM`
-- 截图：agent-browser（session: pr-eb788c7746bf）
-- 像素分析：`node _tools/analyze-png.js <mode> <png>`（ascii/region/lregion/crop/grid）
-  - 画布在 1264x569 视口中居中：offset(147.5625, 12)，比例 3.02774 px/逻辑像素
-- 画面状态验证：`agent-browser eval "..."` 读取 window.PixelRoom 内部状态
-
-## 7. 本轮会话任务（2026-08 修复轮：界面修复 + 自动关灯 + 回滚）
-
-> 基线：eb29716。本轮 6 个子任务均已提交并推送（见 §8）。
-
-### 7.1 小人肤色与头部绘制（js/character.js）
-- SKIN 改为暖黄偏白 `#f5e6c8`，新增 `SKIN_SHADOW` / `SKIN_HIGHLIGHT`
-- `drawHead()` 重写为 12×12 头部：深棕轮廓（大 2px）+ 实色皮肤填充 + 下巴阴影 + 额头高光 + 头发/刘海 + 2px 眼睛（含白色高光）+ 嘴巴
-- 关键：函数开头强制 `ctx.globalAlpha = 1`（重置透明度，防止光照叠加导致画面发灰）
-- 全部姿势调用点适配新签名 `drawHead(ctx, x, y, direction)`
-
-### 7.2 猫的绘制（js/cat.js）
-- 新增 `drawCat()`：轮廓 + 身体 + 肚皮 + 条纹 + 头部 + 耳朵 + 眼睛 + 胡须，开头强制 `globalAlpha = 1`
-- `draw()` 改为统一调用 `drawCat`（原 per-pose 绘制函数与 px/shadeCat 助手移除）
-
-### 7.3 屏幕条纹修复（js/roomLayout.js / js/main.js / js/interaction.js / css/style.css）
-- 根因：画布 **CSS 非整数缩放** → 逻辑像素行映射到宽窄不一的显示行（画布内坐标本就全为整数）
-- `drawMonitorContent()`：x/y/w/h 入口全部 `Math.floor` + 不透明边框（大屏 2px / 小屏 1px）+ 背景 `#1e1e1e`
-- `main.js fitSceneSize()`：场景画布 CSS 尺寸取整到 PIXEL(4) 整数倍，resize 时重算
-- `interaction.js fitComputer()`：放大屏画布宽度取整到 16 的倍数（高 ×5/8 必为偶数）
-- `style.css`：`#scene-wrap` 加 flex 居中
-
-### 7.4 像素密集化（小人部分已回滚，见 7.6）
-- 曾将小人头 12×12→16×16、身体 20×24；猫身体 16×10→20×12、头 8×8→12×12
-- 细节：三层发色（HAIR/HAIR2/HAIR_HIGHLIGHT）、每 4px 一条衣物褶皱、猫毛 10% 确定性斑点、3px 眼睛+高光+反光
-- **用户确认回滚小人**：见 7.6；猫保持放大版本
-- 配套：interaction.js 摸猫判定区域加大（±11px × FLOOR-24）
-
-### 7.5 自动关灯 autoLightsOff（js/lighting.js / js/character.js / js/main.js）
-- `initDailyRandom()`：每天随机卧室关灯时刻 `23 + Math.random()`（23.0–24.0），存 `P.Storage.state.bedroomOffTime`（含 date，跨天重置），启动时由 main.js 调用
-- `checkAutoLights()`（主循环每帧）：
-  1. 23:00 关工作区/卫生间/厨房吊灯（`lamps.ceiling[1..3]`）+ 工作区台灯 `deskLamp`
-  2. 当天随机时刻关卧室吊灯 `ceiling[0]` + 床头灯 `nightLamp`
-  3. 小人入睡 5 分钟后关卧室吊灯（`P.Character.sleepInfo()`，已处理跨零点）
-- character.js 新增 `sleepStartMin` 追踪与 `sleepInfo()` 导出
-- 关键适配：关灯时置 `lamps.touched = true` 转手动模式（否则 lampOn() 夜间自动开灯会忽略关灯状态）
-- 调试：`index.html?t=23:05`
-
-### 7.6 回滚小人尺寸（js/character.js，本任务）
-- 撤销 7.4 的小人改动：头部恢复 12×12、身体恢复 8×12、全部姿势坐标与影子恢复原值、移除 HAIR_HIGHLIGHT
-- **保留**：7.1 的 SKIN 颜色与 drawHead 重写（含 alpha 重置）、7.5 的入睡时间追踪（均与尺寸无关）
-- 猫保持 7.4 放大后的尺寸；interaction.js 摸猫区域保持加大
-- 验证：`node --check` 通过；drawHead 调用点恢复 hx-6/hx-7/hx-5 原偏移
-
-### 7.7 回滚猫尺寸并锁定橘色（js/cat.js / js/interaction.js）
-- 撤销 7.4 的猫改动：身体恢复 16×10、头部恢复 8×8，移除毛斑点/鼻子/3px 眼睛
-- **锁定橘猫配色**：PALETTES 精简为单一橘色（body `#e89a4a` / stripe `#c47a2e` / belly `#f7d9a8` / dark `#a0601f`），init() 不再按存档 catSeed 随机选色
-- interaction.js 摸猫判定区域恢复 ±9px × FLOOR-16
-- 保留：7.2 的 drawCat（16×10 身体 + 8×8 头 + globalAlpha 重置）、7.5 的自动关灯
-- 验证：`node --check` 通过
-
-## 8. 提交记录（本轮）
-
-| Commit | 说明 |
-| --- | --- |
-| cd73248 | 界面修复（肤色/头部/猫/屏幕条纹）+ 自动关灯 + 回滚小人尺寸 + 本交接文档 |
-| fb522ff | 回滚猫尺寸 + 锁定橘猫配色 + 交接文档更新 |
-
-## 9. UI 响应式缩放（2026-08）
-
-> 问题：Canvas 随屏幕缩放，但 HTML UI（时间卡片/按钮）用固定 px，手机上显得过大、遮挡画面。
-
-### 方案（css/style.css，纯 CSS 改动，JS 无内联样式无需动）
-
-1. **根字号 = UI 缩放基准**：`html { font-size: 16px }`，断点 `≤768px → 12px`、`≤480px → 10px`；
-   横屏手机守卫 `@media (max-height: 500px) and (max-width: 900px) → 12px`。
-2. **全部 UI 元素改用 rem**：`.ui-panel`（padding/圆角）、`#time-ui`（top/left/min-width）、
-   `.time-main`/`.time-sub`、`#top-right`/`.icon-btn`、`#settings-panel`、`#computer-modal`/`.modal-box`、
-   `#toast` 均随根字号等比缩放。桌面（≥768px 宽）视觉与旧版完全一致。
-3. **手机（≤480px）微调**：时间卡片 `min-width` 216px→10rem、背景改半透明
-   `rgba(8,12,24,0.45)`、隐藏 `#local-time` 行（只留主时间+作息行）；设置面板铺满宽度；
-   电脑弹窗 padding 收紧。
-4. **溢出保护**：`#time-ui` 加 `max-width: calc(100% - 1rem)`，`.time-sub` 加
-   `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`。
-
-### Canvas 缩放检查（无需改动）
-
-- `main.js fitSceneSize()`：按视口取 `min(100vw-24, (100vh-24)*16/9)` 并取整到 PIXEL(4) 整数倍，resize 重算。
-- `renderer.js`：内部固定 1280×720（逻辑 320×180），CSS 缩放由 `#scene-wrap` 处理。
-- 实测各视口画布均保持 16:9 且像素对齐。
-
-### 验证（agent-browser 实测计算样式 + 截图，见 `_shots/ui-*.png`）
-
-| 视口 | 根字号 | 画布 | 时间卡片 | 图标按钮 |
-| --- | --- | --- | --- | --- |
-| 1600×900 桌面 | 16px（=100%） | 1556×872 | 26px 字体 / 312×95（与旧版一致） | 40×40 |
-| 768×1024 平板 | 12px（75%） | 744×416 | 19.5px / 234×72 | 30×30 |
-| 667×375 横屏手机 | 12px（守卫） | 624×348 | 19.5px / 234×72 | 30×30 |
-| 375×667 手机 | 10px（62.5%） | 348×196 | 16.25px / 196×48（旧版 312×95=画布宽 90%） | 25×25 |
-
-- 375px 下卡片/按钮全部在画布内，卡片不遮挡床/工作区区域（几何断言通过）；
-- 设置面板手机端铺满宽度（341×146）且在按钮下方；电脑弹窗 345×247、内置画布 304×190（8:5）正常；
-- 手机端 `#local-time` 隐藏生效，平板/桌面保留。
-
-### 可选后续（本次未做）
-
-- 手机上默认只显示时间、点击展开完整信息（需 JS 交互）；
-- 10 秒无操作自动淡出时间卡片（需 JS 计时器）。
-
-## 10. 聊天界面标题栏 MOMO（2026-08）
-
-- 位置：`js/roomLayout.js` → `drawMonitorContent()` 的 `case 'chat'`。
-- 新增 `PIXEL_FONT`（4×5 点阵字体表，M/O），聊天屏幕顶部绘制标题栏：
-  - 放大屏（`w>=42 && h>=16`）：7px 标题栏（底色 `#1a2132` + 顶边/分隔线 `#2e3a56`）+ 点阵名字
-    "MOMO"（`#8ab4ff`，1px 点距）；气泡下移至标题栏下方，数量按 `(h-10-headerH)/4` 自适应。
-  - 极小屏（室内 16×18 显示器）：只画 2×2 在线绿点（`#4ae07a`），气泡布局保持不变。
-- 验证：放大屏 getImageData 采样确认底色/边框/M·O 字形像素正确；室内小屏绿点+气泡正常
-  （颜色受屏幕冷光叠加影响）；截图 `_shots/chat-momo-modal.png` / `chat-momo-scene.png`。
-
-## 11. 功能迭代任务（2026-08：冰箱/餐桌/厕所/猫行为/连锁交互/物品动态变化）
-
-> 任务目标：不新增系统，只完善已有元素的行为细节；保持现有架构/视觉/性能方案。
-> 涉及文件：js/character.js、js/roomLayout.js、js/cat.js、js/interaction.js、js/storage.js、
-> js/main.js、js/audio.js、js/renderer.js（无新增文件，无外部素材）。
-
-### 11.1 冰箱与餐桌食物（js/character.js / js/roomLayout.js）
-- 餐前取食材：每餐（早/午/晚）开始后，小人先走到冰箱前（x=277）→ 冰箱门开（约 2.2s，含开/关
-  各 0.35s 过渡）→ 关门 → 上桌吃饭。`char.fridgePhase`：go→open→done。
-- 冰箱门：`drawFridgeDoorDynamic()`（动态层）打开时绘制内部（层板 + 牛奶/蔬菜/果汁/鸡蛋/番茄/
-  面包/冰格色块），门以宽度收缩模拟平开；冷气白雾 4 个白色像素从开口向上飘散（`fridgeOpen()` 暴露开度）。
-- 餐桌食物：`drawMealFood()`（动态层）按 `P.Character.mealFood()` 绘制，出现即消失无端菜动作；
-  食物随机——早餐 包子/面包/面条/鸡蛋，午餐 米饭炒菜/外卖盒/泡面，晚餐 面条/火锅/外卖；
-  食物热气 3 个白色像素上升。盘子静态加宽到 9px，原静态米饭绘制移除。
-
-### 11.2 厕所使用动画 + 马桶高度（js/character.js / js/roomLayout.js）
-- 马桶坐面降到 y=114（原 106），小人坐下腿自然弯曲（大腿前伸 y113-117 + 小腿垂下 117-128）。
-- 早晨洗漱流程（washPhase='brush' 时，`washSeq` 0-5）：到马桶前(x=215) → 坐下(4-6.5s) →
-  冲水(1.3s，`P.Audio.flush()` 水声 + 水箱水花像素 + 按钮闪光) → 走去洗手台(x=186) →
-  洗手(4.5s：水柱→搓洗→关水→毛巾) → 刷牙(原有)。晚上 22:00 仍为淋浴（不变）。
-- 洗手水柱画在头部右侧（x=hx+9），避免被头遮挡；搓洗手部像素交替 + 泡泡；关水后毛巾擦手。
-- 新姿势：fridge / toilet / flush / handwash；`drawToiletLegs()` 共享坐姿腿（裤子上半部下移：
-  大腿根露内裤边 + 裤脚堆脚踝）。
-
-### 11.3 猫行为扩展（js/cat.js / js/roomLayout.js）
-- 新增攀爬点 `CLIMB_POINTS`（x=站立位，y=支撑面）：餐桌(262,110)、冰箱顶(274,86)、工作区桌面
-  (122,108)、衣柜顶(8,56)、厨房吊柜顶(288,56)。状态机：climb（走到目标→跳上，0.38s 插值+弧线+
-  落地 squash）→ perch（停留 durMin~durMax，餐桌 10-30s / 冰箱顶 20-60s / 桌面 5-20s / 柜顶 20-60s）
-  → jumpdown（跳下）。
-- 特殊行为：underbed（床下 x=20，只画尾巴+后爪，15-45s，crawlout 爬出）、scratch（窗帘 x=52 原地
-  抓挠 5-15s，前爪+抓痕像素）、eat（猫粮碗 x=307，低头 2.5-4.5s，每次 `items.bowl--`，空碗不再去吃）。
-- 猫粮碗：厨房角落 (305,124,5,3) 静态绘制，余粮 3 级递减；猫进食时碗重绘在猫身前保证可见。
-- 上桌蹭饭：小人吃饭时 climb 权重 +10 且优先选餐桌；桌面停留时键盘猫爪 + 咖啡杯被推歪 1px + 泼溅
-  （`drawDeskCatEffects` / `drawCoffeeCup` 读 `P.Cat.perchId()`，并入缓存签名）。
-- 通用支撑面：猫新增 `c.y`（站立面高），绘制/影子/跳跃插值均基于它；移除旧 onDesk/deskY。
-
-### 11.4 连锁交互（js/interaction.js / js/cat.js / js/character.js）
-- 连续摸猫（`pet()` 3s 窗口计数）：第 1 次抬头喵 → 第 2 次蹭手（purr+爱心）→ 第 3 次翻肚皮
-  （`drawBelly` 肚皮朝上）→ 第 4 次伸爪"够了"后起身走开（walkaway）；间隔超 3s 归零。
-- 快速开关灯：`toggleLamp()` 内 5s 滑动窗口计数 ≥3 次且距上次惊吓 >30s → `P.Cat.frightened()`
-  （跑向最近隐蔽点：床下/衣柜顶/吊柜顶，速度 26）+ `P.Character.react('lookup')` 抬头看一眼。
-- 点击小人：判定区 当前位 ±15px × y∈[90,130]（猫/灯判定优先，避免挡住台灯开关）；随机 4 种反应
-  挥手/点头/发呆惊醒（抖动+感叹号）/回头看，1.2-1.8s 冻结当前活动，结束后继续原状态；
-  睡觉/淋浴中不反应。
-
-### 11.5 物品动态变化（js/storage.js / js/roomLayout.js / js/main.js）
-- 状态存 `P.Storage.state.items`，按 `items.date` 记录，跨天自动更新；主循环每帧
-  `ensureDaily()`（跨天：猫粮续满 3、快递箱每日 29% 出现/1-3 天后拆开）+
-  `syncItems()`（按当前时刻刷新 咖啡杯/被子/水槽碗，仅在变化时 save）。
-- 咖啡杯（工作区桌面 132,105,3,4）：8.5 满杯 → 上午 4→2 → 下午 2→0（17.5 见底）→ 晚间洗漱洗掉
-  → 次日重新满杯；液面 0-3px 深棕像素，高度 = round(cup/4*3)。
-- 被子（床）：睡觉 22.5-7.5 平整盖身(cover) / 睡前 21.5-22.5 整齐叠床尾(made) / 白天乱糟糟
-  堆床尾+歪斜+垂落(messy)。
-- 猫粮碗：猫每次吃 -1，空碗保持，次日自动续满。
-- 快递箱（门口 x=310,118,7,7）：纸箱+胶带+面单；拆开后小物件随机出现在预设点
-  （书架摆件/厨房杯子/卧室挂画/桌面盆栽/卫生间花瓶），箱消失。
-- 水槽碗：8.5（早餐后）出现于厨房水槽，22:00 洗漱洗掉。
-- 离屏缓存：`renderer.js staticSignature()` 追加 items 各字段 + mealFood + catPerch，
-  状态变化自动重建（已验证 bowl/blanket/pkg 变化触发签名更新）。
-
-### 11.6 顺手修复：存档引用 bug（js/storage.js）
-- 原代码 `P.Storage.state = state` 在对象字面量创建时捕获引用，`load()` 内 `state = merge(...)`
-  重赋值后外部 `P.Storage.state` 仍指向旧对象 → 刷新页面后读到的存档是默认值（影响全部存档项）。
-- 修复：`load()` / `reset()` 内合并/重置后同步 `P.Storage.state = state`。
-- 验证：写入 bowl=1 + pkg arrived 后刷新，状态原样恢复。
-
-### 11.7 验证摘要（agent-browser 无头 + canvas 像素采样）
-| 项目 | 结果 |
-| --- | --- |
-| 冰箱门开合 | fridgePhase open 时 `fridgeOpen().p` 0→1→0；内部层板+食物色块、门上白雾像素(78-82 行)可见 |
-| 餐桌食物 | 早餐 noodles / 午餐 rice / 晚餐 noodles 均随机出现，盘上有食物+热气；吃完消失 |
-| 厕所流程 | 07:40 实测 toilet(4.5s)→flush(1.3s)→handwash(4.5s)→brush；水柱蓝像素 [111,152,183] 水开时出现 |
-| 猫攀爬 | perch fridge(y=86) 20-60s / perch wardrobe(y=56)；climb 行走→跳→落地；scratch(窗帘 x=52) 触发 |
-| 猫吃粮 | eat 走到 x=307，bowl 3→2→1；空碗不触发 eat；次日 ensureDaily 续满 |
-| 连续摸猫 | 4 连点 petLevel 1→2→3→4，末态 walkaway；间隔 >3s 归零（l2=1） |
-| 快速开关灯 | 3 次点击（5s 内）→ catState=flee + charReact lookup |
-| 点击小人 | 点击 (147,122) → react wave 1.2s 后清除 |
-| 物品持久化 | 设置 bowl=1+pkg arrived 刷新后原样恢复；杯子/被子/水槽碗按时刻刷新 |
-| 缓存签名 | items 变化（bowl 3→0、pkg none→arrived→opened）触发签名变化并重建 |
-| 控制台 | 全程无报错；`node --check` 14 个 JS 全部通过 |
-- 截图：`_shots/feat-breakfast-0805.png` / `feat-fridge-open.png` / `feat-dinner-1830.png` / `feat-toilet-flush.png`
-
-### 11.8 提交记录（本轮）
-| Commit | 说明 |
-| --- | --- |
-| 7d88fc4 | feat: 功能迭代（冰箱/餐桌/厕所/猫行为/连锁交互/物品动态变化）+ 存档引用修复 + 交接文档 |
-
-## 12. 腊肠狗（2026-08，js/dog.js）
-
-> 需求：房间里增加一只腊肠狗（长身体、短腿、大耳朵、摇尾巴、爱跟人、会叫）。
-> 新增文件：js/dog.js（独立行为系统，参照 cat.js 架构）。无外部素材。
-
-### 12.1 新增/修改文件
-| 文件 | 改动 |
-| --- | --- |
-| js/dog.js | **新增**：腊肠狗状态机 + 像素绘制 |
-| index.html | cat.js 后引入 dog.js |
-| js/main.js | init/update 接入 P.Dog |
-| js/renderer.js | draw 接入 P.Dog（小人/猫后）；静态缓存签名加 `dogBowl` |
-| js/roomLayout.js | 厨房新增 狗窝(286,124,12,4) + 狗粮碗(300,124,5,3) 静态绘制 |
-| js/interaction.js | 点击狗：首次叫、4s 内再点跟随（判定 ±14px × FLOOR-20） |
-| js/audio.js | 新增 `bark()`（两声低吼+尾音，WebAudio 程序化） |
-| js/storage.js | items.dogBowl（狗粮碗 0-3，次日续满）+ dogSeed（毛色种子，现为冗余保留） |
-
-> 配色：**已锁定棕色**（用户手动锁定，`PALETTES` 精简为单一棕色，与猫锁定橘色同例；
-> `dogSeed`/`PALETTES[seed % len]` 逻辑保留，恒取棕色）。
-
-### 12.2 行为状态机（9 态，带权随机切换）
-- idle / wander / sleep（走回狗窝蜷着睡，画 Zzz）/ eat（走到碗边低头嚼，扣 dogBowl）
-- zoomies（26px/s 狂奔）/ follow（跟在小人身后一侧）/ bark（张嘴+声波+叫声）
-- scratch（原地刨地）/ sit（坐着抬头看，尾巴贴地摆）
-- 夜晚（小人 sleep 时段）睡眠权重 +26，其余权重大幅下调；
-- 狗粮碗空则不再触发 eat；狗始终限制在 x∈[12,308]。
-
-### 12.3 绘制要点
-- 站姿：20px 长身 + 4 条 3px 短腿（走路交替摆动+上下微颠）+ 大垂耳 + 长嘴口鼻 + 红项圈金牌 + 摇尾；
-- 姿态变体：eat 低头到碗沿 / bark 抬头张嘴+舌头+波纹；
-- 睡觉：蜷成一团窝在狗窝里（背拱 + 埋头的头 + 卷尾 + Zzz 上浮）；
-- 朝向：dir<0 时以狗为中心 scale(-1,1) 镜像（同猫）；draw 开头重置 globalAlpha=1；
-- 进食时碗重绘在狗身前保证可见（同猫的做法）。
-
-### 12.4 验证
-- `node --check` 15 个 JS 全部通过；
-- Node VM 冒烟测试 `_tools/smoke-dog.js`：9 态全部可达、逐态 draw 无异常、
-  eat 扣粮 3→2、interact 首次 bark / 再点 follow、跟随会移动、夜晚倾向睡、空碗不扣负、不出界；
-- Chrome headless 实测（`_shots/dog-day.png` / `dog-night.png`）：
-  - 白天厨房可见腊肠狗本体（棕 #8B5A2B 像素簇 x≈278-307）+ 狗窝/狗粮碗/猫碗同排；
-  - 夜间 t=23:00 狗蜷在狗窝（窝区整体变暗 rgb≈60，与白天窝色 #b89f80 对比明显）；
-  - 页面无 JS 控制台错误（仅 Chrome 自身沙箱警告）。
-
-## 13. 修复轮（2026-08：冰箱门可见性 + 猫狗随机起始点）
-
-> 基线：0beeb44。用户反馈两点：(1) 小人靠近冰箱"好像没打开门"；(2) 每次打开页面
-> 猫/狗起始点应随机。
-
-### 13.1 冰箱门"打不开"根因与修复（js/character.js）
-- **排查**：Node VM 冒烟 + Chrome headless 实测确认状态机完全正常
-  （`fridgePhase: go → open(2.2s) → done → 上桌 eat`，`fridgeOpen().p` 0→1→0），
-  门确实开了。根因是**视觉遮挡**：小人旧站位 `x=277` 正好站在冰箱门缝正前方
-  （冰箱内腔 x=269-278），小人 12px 头 + 8px 身几乎完全盖住开口，
-  用户看到"小人站在冰箱前、门没开"。
-- **修复**：餐前取食材站位 277 → **262**（与喝水点同位，冰箱左侧），面朝右
-  （`drawFridge` 改为朝右、手臂伸向门开口 x=269 处）。开门瞬间整个内腔
-  （层板/牛奶/蔬菜/果汁/鸡蛋/番茄/面包/冰格）与冷气白雾完全可见。
-- 改动点：init() 与活动切换两处 `x: 277 → 262`；`drawFridge()` 姿态镜像为面朝右。
-- 新增冒烟测试 `_tools/smoke-fridge.js`（洗漱→早餐全流程：到达 262 → open →
-  done → 上桌，含餐时直接加载页面立即开门的路径）。
-
-### 13.2 猫/狗每次打开页面随机起始点（js/cat.js / js/dog.js）
-- **猫**：init() 原固定 `x=60, dir=-1` → 从卧室(30-54)/工作区(120-150)/厨房(250-274)
-  三区随机取点 + 随机朝向（`x` 夹在 [8, 312]，`dir` ±1）。
-- **狗**：init() 原固定 `x=292(狗窝), dir=-1` → 同上三区随机取点 + 随机朝向
-  （`x` 夹在 [12, 308]）。
-- 只改出生点/朝向，状态机、存档、绘制均不变；随机性不落盘（每次刷新都变）。
-
-### 13.3 验证
-- `node --check` 15 个 JS 全部通过；`_tools/smoke-fridge.js` / `smoke-dog.js` 全绿；
-- Chrome headless（`_shots/debug-fridge-new.png`）：开门瞬间冰箱内腔食物色块
-  逐像素可见，小人头/身不再遮挡开口；字符 debug `x=262 pose=fridge phase=open`；
-- 连续 4 次刷新：猫起点 258.8 / 260.8 / 31.0 / 124.0，狗起点 276.4 / 143.5 / 259.7 /
-  269.6（均随机、不出界、朝向随机）。
-
-
-## 14. 休闲时段扩充 + 夜间活动 + 边界/瞬移修复（2026-08）
-
-> 需求：休闲时段（19:00-22:00）6 种活动子状态机；夜间不再健身、70% 概率整夜无活动；
-> 小狗边界修复（[21, W-21] 完整可见）；猫移动全部连续无瞬移。
-
-### 14.1 休闲活动系统（js/character.js）
-- 6 种活动：`game`（工作区电脑前，双手交替敲键盘+鼠标移动+屏幕游戏画面）、`read`
-  （床边捧书，每 3-5s 翻页：页角掀起 1-2px，头部微动）、`exercise`（工作区空处 x=96，
-  深蹲/俯卧撑/开合跳三动作循环，每 30-60s 换动作）、`play_cat`（挥逗猫棒，猫追棒扑跳）、
-  `look_out`（卧室窗边 x=63 面朝窗外，微晃+偶尔抬头 1.5s，时长 10-30s）、`phone`
-  （床边躺/坐/趴三姿势随机切换，每 2-3 分钟，滑动动画+屏幕光映脸）。
-- `LEISURE_SPOTS` 记录各活动站位（绝对 x）与朝向；每次切换 `goToLeisure()` 先走到目标
-  （不瞬移，走路 15px/s），到达后 `leisureT`（5-20 分钟）开始计时，结束后 `pickLeisure()`
-  带权随机选下一项且不连续重复。
-- 权重：game 20 / read 18 / exercise（19:00-21:00 高=26；21:00-21:30=12；21:30 后≈5%）/
-  play_cat 16 / look_out 7 / phone 18；猫睡觉（`P.Cat.isSleeping()`）时 play_cat 权重 0，
-  其权重转给 read/phone，且不会调用 `playWithHuman`。
-- 过渡动画：到达时 `arriveT=0.5s` 身体下沉 2px（坐下过渡）；转身随行走方向；
-  手机姿势切换先 0.6s 坐起过渡再躺/趴。
-- 调试：`?leisurefast` 让休闲时长缩至 1/50（便于观察切换）。
-- 显示器联动：休闲 game 时 `P.Character.screenMode()` 返回 `'game'`，
-  roomLayout `drawMonitorDynamic` 开启显示器并绘制小游戏画面（跑动小人+障碍+分数+地面），
-  config 新增 `SCREEN_MODE_NAMES.game = '打游戏'`。
-
-### 14.2 夜间活动（js/character.js）
-- 入睡（22.5）时 `makeNightPlan()`：70% 概率空计划（整夜无活动）；30% 生成 1-3 个活动，
-  类型按权重：上厕所 20% / 喝水 15% / 吃夜宵 10% / 玩手机翻身 30%（其余 25% 无事）。
-- 活动时刻用"入睡后经过的分钟数"（23:12 ~ 次日 06:48 = 42~498 分钟），天然跨零点；
-  `nightUpdate()` 按经过时间触发（修复了旧方案 atMin>1440 永不触发与跨零点比较错误）。
-- 执行：toilet 走到卫生间 x=212 坐马桶 45-90s / drink 走到厨房 x=262 喝水 30-70s /
-  snack 走到餐桌 x=248 吃 60-120s / phoneToss 留床坐起玩手机（`drawNightPhone` 光映脸）。
-- 活动结束自动回床（target x=24 pose sleep）继续睡；07:30 起床洗漱流程不受影响；
-  离开 sleep 时重置 nightPlan（下一晚重新掷）。无夜间健身。
-
-### 14.3 小狗边界（js/dog.js）
-- `DOG_HALF_WIDTH = 19`；边界 `[21, W-21]`（`DOG_BOUND_MIN/MAX`）。
-- init / pickWanderSpot / pickZoomTarget / FOLLOW 目标全部夹到安全范围；每帧硬夹紧。
-- WANDER 到达目标点后停止移动，进入 idle 等待状态切换（不再原地续走）。
-
-### 14.4 猫瞬移修复（js/cat.js）
-- 新增统一 `moveToTarget(dt, spd)`；wander/rub/walkaway/crawlout/eat/climb/flee 全部改用它。
-- 消除瞬移：scratch/underbed 先走到窗帘/床下再动作（到达前正常绘制，到达后隐藏/抓挠）；
-  eat 由 moveToTarget 到达（不再 2px 直接贴）；pet/frightened/playWithHuman 在高处时先
-  jumpdown 落地（petAfterJump/fleeAfter/playAfter 链式）；摸床下猫先 crawlout 爬出。
-- 攀爬两阶段：先走到攀爬点附近（<4px）→ 跳跃动画（0.38s 弧线+squash）→ 到达 perch。
-
-### 14.5 逗猫联动（js/character.js / js/cat.js）
-- `P.Character.getToyX()/getToyY()` 返回逗猫棒顶端（随 sin 摆动）；仅 play_cat 时非 null。
-- `P.Cat.playWithHuman()` 进入 `play` 状态：追玩具（15px/s），靠近时扑跳（0.28s 小跳），
-  玩 20-40s 休息 1.5-4s，偶发喵叫；`endPlay()` 恢复普通行为；`isSleeping()` 供休闲选活动。
-
-### 14.6 验证
-- `node --check` 16 个 JS 全部通过；新增 `_tools/smoke-leisure.js` 全绿：
-  休闲 66 分钟 234 次切换、6 种活动全出现、单帧最大位移 0.75px（走路上限，无瞬移）、
-  猫睡觉不选 play_cat、逗猫追棒/扑跳/休息、猫 60k 帧单帧位移 ≤1.5px（zoomies 冲刺上限）、
-  狗 x∈[21,299]、夜间 70% 空计划+活动触发+回床、健身占比 19:30=22.4% / 21:50=8.1%；
-- 既有 smoke-dog / smoke-fridge 全绿（回归无破坏）；
-- agent-browser 实测：`?t=19:30&leisurefast` 六种活动截图
-  （`_shots/leisure-{game,read,exercise,play_cat,look_out,phone}.png`），
-  play_cat 时 cat=play 追棒；夜间 22.6 验证 phoneToss 触发（留床亮手机光，床区蓝调像素）；
-  全时段扫描 07:40~23:30 无控制台错误、作息行为正常。
-## 15. 卧室墙面挂件条（Pixel Plushies，2026-08，js/roomLayout.js）
-
-> 需求：将 7 个像素可爱角色（Pixel Plushies）作为静态墙面挂件，严格按顺序挂在床头正上方墙面。
-> 角色只作背景装饰，不参与交互/动画；不引入外部图片素材；像素对齐、坐标取整。
-
-### 15.1 布局
-- 位置：床头板上方（y=100）与挂画/挂钟（y=56-71）之间的空闲墙面 y=72-94；
-  水平范围 x=16-50 —— 避开左缘衣柜（x=2-15）与右缘窗户窗帘（x=51-55）。
-- 单排 68px 放不下（自由墙段仅 35px），采用两排：第一排 4 个（腊肠狗/奶茶/牛油果/兔子，
-  x=16,25,34,43），第二排 3 个（橙色玩偶/章鱼/拉面碗，x=21,30,39），第二排与第一排同中心。
-- 每格 7 逻辑像素宽、间距 2px；挂件从顶部 1px 小挂点垂下。
-
-### 15.2 实现
-- js/roomLayout.js：PLUSH_PAL（每角色 5-6 色高对比调色板）+ PLUSH_ART
-  （7 角色像素图，'.'=透明）+ PLUSH_ORDER（严格顺序）+ drawPlushArt()
-  （自动生成 1px 深色描边再画本体，无抗锯齿）+ drawPlushCell() + drawPlushWall()。
-- 调用点：drawBedroomDecor() 末尾 → drawPlushWall(ctx)，属 z=0 背景层、
-  入静态离屏缓存（墙纸之后、家具之前）；不随光照/季节变化（可受整体室内光线叠加）。
-
-### 15.3 特征与配色
-- 腊肠狗：棕 #8B5A2B 长垂耳+圆头+长身短腿+米白口鼻；奶茶：红吸管+米白奶盖+棕茶+底部珍珠；
-  牛油果：深绿皮 #3F6A4A + 亮绿肉 #A8C878 + 深棕核；白兔：白脸+长耳粉内+红眼；
-  橙色玩偶：圆润横条 #F08030 + 圆眼笑脸；章鱼：粉头 #F07898 + 波浪触手；
-  拉面碗：红碗沿 #E04A52 + 面条纹理 + V 形筷子 + 白碗身。
-- 每次缩小绘制均为 7 格宽、6-9 格高，轮廓 1px 深色描边保证夜间可见。
-
-### 15.4 验证
-- 离线渲染工具 _tools/render-static.js（Node 缓冲区 ctx 渲染 drawHouse，输出卧室墙面 PNG）
-  迭代确认 7 个挂件在白天均清晰可辨（狗/饮料/牛油果/兔/橙条/章鱼/拉面碗）；
-- agent-browser 实测：白天（t=15:00）与深夜（t=01:00 灯全关）截图均可见、无重叠
-  （挂件颜色包围盒 x<=50 未触及窗帘 x>=51；与挂画/挂钟/吊灯/床头板零重叠）；
-- 既有冒烟测试 smoke-dog / smoke-fridge / smoke-leisure 全部通过（无功能回归）；
-- 截图：_shots/plush-final-day.png / plush-night.png。
-
-## 16. 卧室吉他 + 多曲弹唱（2026-08，js/roomLayout.js + js/songs.js + js/character.js）
-
-> 需求：卧室新增像素吉他（静态装饰）。点击吉他时，只要小人不在睡觉时段（00:00–07:30），
-> 小人会走到床边坐下，抱起吉他弹唱一首随机歌曲；弹唱结束后放下吉他，恢复当前时段行为。
-
-### 16.1 吉他绘制与位置（js/roomLayout.js）
-- 位置：卧室右墙边、窗下（逻辑坐标 x=68-76，y=110-126，底部 y=126 ≈ FLOOR-2）。
-  **说明**：需求建议 x≈15-20 处被床垫（x=8-44, y=112-121）完全遮挡，无法既可见又可点；
-  故移至床尾侧（右侧）墙边——满足"床尾靠墙/床侧墙边"，且与床头柜(x46-55)、衣柜(x2-15)、
-  墙面挂件(y56-94)零重叠；冬季暖气管(x58-70,y112-120)会轻微遮住琴体左上 3px（似靠在暖气管后）。
-- 像素吉他约 8×16：琴头深色 #2e2218、琴颈深棕 #4a3320 带 2 条品丝、琴体暖木 #c89050、
-  面板高光 #e8b878、音孔 2×2 #1c1008、琴弦 1px 浅色 #f5ead2、深色 1px 描边 #241408、
-  地面 1-2px 软投影；复用 drawPlushArt()（自动 1px 深色描边，无抗锯齿）。
-- 属 z=1 中景层（drawMidFurniture 末尾调用 drawGuitar），纳入离屏缓存；
-  弹唱时小人"抱走"吉他 → `P.Character.guitarTaken()` 为真 → 静态缓存签名变化自动重建隐藏；
-  结束后恢复显示。
-
-### 16.2 歌曲数据（新建 js/songs.js）
-- `const SONGS = [...]`：每首含 id/title/tempo（每句歌词显示秒数）/endHold（末句额外停留）/
-  lyrics（歌词行数组）。三首：旧画笔(8×1.8+2.5=16.9s)、河岸(7×2.2+3.0=18.4s)、游乐人间(8×2.0+3.0=19s)。
-- 新增歌曲：在 SONGS 数组追加对象即可；歌词长度不限，总时长自动按
-  `lyrics.length × tempo + endHold` 计算。后续可扩展 `weight`（加权随机）、
-  `mood`（欢快/忧伤/平静，影响弹唱表情与摇摆幅度）。
-- index.html 中于 character.js 之前引入（`<script src="js/songs.js">`），暴露 `P.Songs`。
-
-### 16.3 弹唱状态机（js/character.js）
-- **随机选歌 `chooseSong()`**：过滤掉上一首（不连续重复），平均权重随机；
-  `lastSongId/lastSongTime` 记录，后续可扩展 weight 加权与播放次数偏好。
-- `P.Character.startGuitar()` → `'ok' | 'sleep' | 'busy'`：
-  - 睡在床上（pose==='sleep'，覆盖 00:00–07:30 与 22:30–24:00）返回 'sleep'；
-    弹唱中 'busy'；其余时段（洗漱/吃饭/工作/休闲/夜间活动）均可触发。
-  - 触发前快照 `restore = {activity, leisureAct}`（先快照再清空休闲/逗猫状态）。
-- 流程（v2 吉他由小人放回原处）：
-  `go`（走到吉他旁 x=64）→ `pick`（0.8s 抱起，taken=true 墙上吉他隐藏）→
-  `carry`（抱到床边 x=27）→ `sit`（0.5s 坐下）→ `sing`（逐句歌词 + 起手扫弦）→
-  `put`（0.6s 床边放下）→ `back`（抱回吉他位 x=64）→
-  `place`（0.8s 靠墙放回，进入 place 即 taken=false 墙上吉他恢复）→ 结束。
-- sing 阶段：每行显示 `tempo` 秒，末行 `tempo+endHold`；换行 `P.Audio.pluck(每歌固定音高)`
-  + 弹出 1-2 个像素音符；结束 `P.Audio.guitar()` 起手扫弦。
-- 结束后恢复：同段休闲 → `goToLeisure(恢复的活动)` 走回原位继续原活动；
-  其余（洗漱/吃饭/工作/跨时段）→ activity 置哨兵 `'__guitar_done'` → 下一次 update
-  走"活动切换"逻辑按当前时段重新调度（如工作 → 走回 x=147）。
-- 绘制：drawSinging 按阶段分派——go/back 行走（back 身侧竖抱吉他）、
-  pick/place 站立伸手（place 时墙上吉他已恢复）、carry 抱琴行走、put 琴放低、
-  sing 坐床边怀抱吉他（见 16.4 动画细节）。
-
-### 16.4 弹唱动画与歌词（js/character.js）
-- 动画细节：身体/头部左右摇摆 1px·1Hz（`sin(t·2π)`）；左手按弦随歌词每句换把位
-  （`g.line % 3`）；右手拨弦 2Hz 上下交替；嘴巴每 0.5s 开合；眼睛微闭；
-  吉他随节奏轻颠。
-- 歌词显示（DOM 面板）：`showLine()` 调用 `P.UI.showLyric(歌名, 歌词)` 驱动
-  `#lyric-box`（index.html 底部居中暗色面板，css 样式 rem 自适应小屏）；
-  每句显示 tempo 秒、末句 tempo+endHold；结束 `P.UI.hideLyric()` 收起面板。
-  （注：曾改为 Canvas 头顶气泡，因可读性回退为 DOM 面板。）
-- 像素音符：每句开始弹出 1-2 个（1-2px，随机左右偏移，`g.notes` 由 showLine 生成），
-  向上漂浮 4-6px，约 0.5s 淡出（`ctx.globalAlpha` 衰减，drawSingNotes 绘制）。
-- 弹唱时左上活动行显示"🎸 弹唱《歌名》"（ui.js）。
-
-### 16.5 交互 / 音效 / 缓存
-- interaction.js：`hits()` 吉他可点区域 ±8px（x=60, y=104, w=20, h=26，不超房间右界），
-  点击按返回值 toast（🎸 开唱 / 🎵 弹唱中 / 🛌 小人在睡觉，别打扰他）。
-- audio.js：`guitar()`（C 和弦琶音三角波扫弦）+ `pluck(freq)`（单音拨弦带轻微走音）。
-- renderer.js：staticSignature 追加 `|g0/1`（吉他是否被抱起），触发缓存重建隐藏/恢复墙上吉他。
-
-### 16.6 验证
-- `node --check` 全部 JS 通过；`_tools/smoke-guitar.js` 全绿：
-  go→pick→carry→sit→sing（河岸 7 行 18.4s，g.line 0→6、像素音符 notes>0、
-  DOM 歌词 7 行按序显示 + 结束隐藏）→put→back→place（place 时 taken=false 墙上吉他恢复）
-  →done；结束后哨兵重同步回 work x=147；睡在床上拒绝、淋浴可触发、弹唱中 busy、
-  休闲可弹且结束后恢复原活动（goToLeisure）、连唱两首不重复（chooseSong 过滤）；
-  8 阶段 draw() 无抛错。
-- 既有 smoke-fridge / smoke-dog / smoke-leisure 全部通过（无功能回归）；
-- 离线渲染（_tools/render-room.js）像素采样验证：琴头/琴颈/品丝/琴体/面板/音孔/琴弦/描边/投影
-  配色正确，与床头柜/衣柜/挂件零重叠；
-- 截图：_shots/room-guitar.png / room-guitar2.png / room-guitar-v2.png。
+| `index.html` | 页面骨架、Canvas、覆盖层 UI、脚本加载顺序 |
+| `css/style.css` | 场景容器、响应式 UI、弹窗、Toast、歌词样式 |
+| `js/config.js` | 全局配置、调色板、作息表、事件总线 |
+| `js/timeSystem.js` | 北京时间、调试时间、季节、作息、天体位置 |
+| `js/storage.js` | 存档合并、跨日处理、快递与动态物品 |
+| `js/weatherSystem.js` | Open-Meteo 请求、天气映射、离线兜底和退避 |
+| `js/audio.js` | WebAudio 环境音与交互音效，默认静音 |
+| `js/lighting.js` | 天空、室内光照和每日自动关灯策略 |
+| `js/weatherEffects.js` | 雨、雪和闪电粒子 |
+| `js/roomLayout.js` | 房间、家具、装饰、动态家具内容和点击区域 |
+| `js/songs.js` | 吉他原创曲库数据 |
+| `js/character.js` | 人物日常、休闲、夜间和吉他状态机及绘制 |
+| `js/cat.js` | 猫状态机、交互和绘制 |
+| `js/dog.js` | 腊肠狗状态机、交互和绘制 |
+| `js/renderer.js` | 主渲染管线和静态缓存签名 |
+| `js/interaction.js` | Canvas 坐标换算和点击分派、电脑弹窗 |
+| `js/ui.js` | 时间、活动、设置、Toast 和歌词 UI |
+| `js/main.js` | 初始化、响应式画布尺寸和主循环 |
+| `_tools/` | 离线渲染、截图分析及 Node VM 冒烟测试 |
+| `_shots/` | 历次视觉验证截图，仅作参考 |
 
+脚本依赖顺序由 `index.html` 明确维护。新增模块时必须确认它在所有调用方之前加载。
 
+## 3. 核心运行流程
+
+1. `main.js` 加载存档并执行跨日更新。
+2. 初始化灯光每日随机值、渲染器、人物、宠物、交互、UI 和天气。
+3. 每帧更新存档日状态、人物、宠物、天气粒子和 UI。
+4. `renderer.js` 根据季节、有效灯光和物品状态决定是否重建静态缓存。
+5. 依次绘制天空、静态房间、动态家具、人物、宠物、天气和室内光照。
+
+Canvas 内部固定为 `1280×720`，逻辑分辨率为 `320×180`，每个逻辑像素放大 4 倍。CSS 显示尺寸可以继续缩小，不应给显示宽高增加 320×180 的硬下限。
+
+## 4. 重要状态约定
+
+### 4.1 灯光
+
+- `lamps.touched` 表示用户当天进行过手动开关。
+- `lamps.touchedDate` 限定手动覆盖只在当天有效；跨日恢复自动策略。
+- 23:00 后关闭非卧室灯；卧室夜灯在每日随机的 23:00–24:00 时刻关闭。
+- 自动操作不应伪装成用户手动操作。
+
+### 4.2 动态物品与快递
+
+- `items.date` 是上次跨日处理日期。
+- 猫粮和狗粮跨日补满。
+- 快递按真实经过天数推进；到达后 1–3 天拆开。
+- 拆出物件保存在 `items.collectibles`，不会因下一件快递消失。
+- 拆箱后有 2 天冷却，再按每日 29% 概率生成下一件。
+- 旧存档的 `pkg.state === 'opened'` 会自动迁移到收藏列表。
+
+### 4.3 猫点击位置
+
+`P.Cat.pos()` 返回 `{x, y, dir}`，其中 `y` 是当前支撑面。交互命中必须使用该 `y`，不能假定猫始终位于地面。
+
+### 4.4 夜间活动
+
+70% 的夜晚没有活动；其余夜晚生成 1–3 次活动。活动相对权重为厕所/喝水/夜宵/手机翻身 `20:15:10:30`。计划时间使用入睡后的分钟数，避免跨零点比较错误。
+
+### 4.5 吉他弹唱
+
+点击卧室吉他后，人物依次执行：
+
+`go → pick → carry → sit → sing → put → back → place`
+
+睡在床上时拒绝触发；正在弹唱时返回 busy。弹唱结束后，同一休闲时段恢复原休闲活动，其余情况按当前作息重新调度。曲库文字必须使用原创或已授权内容。
+
+## 5. 交互优先级
+
+Canvas 点击依次判断：
+
+1. 吉他
+2. 电脑
+3. 猫
+4. 狗
+5. 灯
+6. 人物
+
+调整点击区域时应检查重叠，尤其是卧室吉他、床头灯、工作区电脑及高处的猫。
+
+## 6. 本轮修复
+
+- 自动关灯不再把系统操作写成永久手动模式。
+- 手动灯光覆盖按日期失效，页面跨零点会刷新卧室随机关灯时间。
+- 猫点击区域跟随当前支撑面，可正确点击家具高处的猫。
+- 快递按真实离线天数推进，可循环出现，并永久保存已拆物件。
+- `smoke-dog.js` 使用从初始化开始的 seeded PRNG，消除随机漏状态失败。
+- Canvas 允许在小于 320×180 的显示区域继续等比缩小。
+- 本地时区显示包含分钟，如 `UTC+05:30`。
+- 夜间活动注释改为与实际相对权重一致。
+- 曲库歌词替换为项目原创文本。
+
+## 7. 验证
+
+在仓库根目录执行：
+
+```powershell
+Get-ChildItem js -Filter *.js | ForEach-Object { node --check $_.FullName }
+node _tools/smoke-fridge.js
+node _tools/smoke-dog.js
+node _tools/smoke-leisure.js
+node _tools/smoke-guitar.js
+node _tools/smoke-regressions.js
+```
+
+本地视觉检查：
+
+```powershell
+python -m http.server 8137
+```
+
+然后访问：
+
+- `http://localhost:8137/`
+- `http://localhost:8137/?t=23:05`：检查自动关灯和深夜画面。
+- `http://localhost:8137/?t=19:30&leisurefast`：快速观察休闲活动。
+
+视觉检查至少覆盖桌面、375px 竖屏和 320px 竖屏；确认画布没有裁切、控制台无异常、电脑弹窗和歌词面板可用。
+
+## 8. 已知限制与后续建议
+
+- `character.js` 和 `roomLayout.js` 仍然较大。下一轮可按“状态逻辑/角色绘制/家具绘制/动态物品”拆分，但应先补充集成测试。
+- 当前测试主要运行于 Node VM，不能替代真实浏览器的 Canvas、WebAudio、网络和响应式验证。
+- `?t=` 只覆盖时刻，不模拟日期推进；跨日逻辑应使用独立测试时钟验证。
+- 天气 API 依赖外网，离线时显示确定性兜底天气属于预期行为。
+- 存档版本仍为 v1，后续继续扩展结构时建议引入显式 migration 表并提升版本号。
+
+## 9. 提交与交接要求
+
+- 修改前后运行第 7 节全部检查。
+- 新状态若影响静态家具，必须同步更新 `renderer.js` 的缓存签名。
+- 新交互对象必须同时定义绘制位置和命中区域。
+- 不在本文继续追加逐会话流水；历史变化交给 Git 提交记录。本文只描述当前事实、验证方法和已知限制。

@@ -131,15 +131,22 @@
   function lampOn(kind, room) {
     const st = P.Storage.state;
     const manual = st.lamps[kind];
-    if (st.lamps.touched) {
+    const tp = P.Time.now();
+    const today = tp.year + '-' + tp.month + '-' + tp.day;
+    if (st.lamps.touched && st.lamps.touchedDate === today) {
       if (kind === 'ceiling') return !!st.lamps.ceiling[room];
       return !!manual;
     }
+    const quietHours = tp.hour >= 23 || tp.hour < 7.5;
     if (kind === 'ceiling') {
       if (room === 0) return !!st.lamps.ceiling[0]; // 卧室吊灯夜间默认关（睡觉）
-      return !!st.lamps.ceiling[room] || isNightTime();
+      return !!st.lamps.ceiling[room] || (isNightTime() && !quietHours);
     }
-    if (kind === 'deskLamp' || kind === 'nightLamp') return !!manual || isNightTime();
+    if (kind === 'deskLamp') return !!manual || (isNightTime() && !quietHours);
+    if (kind === 'nightLamp') {
+      const bedroomAllowed = !P.Lighting || !P.Lighting.bedroomLightsAllowed || P.Lighting.bedroomLightsAllowed();
+      return !!manual || (isNightTime() && bedroomAllowed);
+    }
     return false;
   }
 
@@ -1833,10 +1840,15 @@
   };
 
   function drawOpenedItem(ctx, st) {
-    const pkg = (P.Storage.state.items || {}).pkg || {};
-    if (pkg.state !== 'opened' || !pkg.item) return;
-    const fn = PKG_ITEMS[pkg.item];
-    if (fn) fn(ctx);
+    const items = P.Storage.state.items || {};
+    const ids = Array.isArray(items.collectibles) ? items.collectibles.slice() : [];
+    // 兼容尚未经过 ensureDaily() 迁移的旧 opened 存档。
+    const pkg = items.pkg || {};
+    if (pkg.state === 'opened' && pkg.item && ids.indexOf(pkg.item) < 0) ids.push(pkg.item);
+    ids.forEach(function (id) {
+      const fn = PKG_ITEMS[id];
+      if (fn) fn(ctx);
+    });
   }
 
   function drawItemObjects(ctx, st) {

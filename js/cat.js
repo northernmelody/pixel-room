@@ -501,7 +501,7 @@
   }
 
   function pos() {
-    return { x: cat ? cat.x : 60, dir: cat ? cat.dir : -1 };
+    return { x: cat ? cat.x : 60, y: cat ? cat.y : FLOOR, dir: cat ? cat.dir : -1 };
   }
 
   function perchId() { return cat ? cat.perchId : null; }

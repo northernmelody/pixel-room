@@ -416,9 +416,21 @@
   // 每帧检查（时间取东八区浮点小时，如 23.5 = 23:30）
   function checkAutoLights() {
     const tp = P.Time.now();
+    const today = tp.year + '-' + tp.month + '-' + tp.day;
+    if (!bedroomOffTime || bedroomOffTime.date !== today) initDailyRandom();
     const t = tp.hour;
     const lamps = P.Storage.state.lamps;
     let changed = false;
+
+    // 用户手动灯光覆盖仅对当天有效；跨日恢复默认自动照明策略。
+    if (lamps.touched && lamps.touchedDate !== today) {
+      lamps.touched = false;
+      lamps.touchedDate = '';
+      lamps.ceiling = [false, false, false, false];
+      lamps.deskLamp = false;
+      lamps.nightLamp = false;
+      changed = true;
+    }
 
     // 23:00 关闭除卧室外的所有灯（工作区/卫生间/厨房吊灯 + 工作区台灯）
     if (t >= 23.0) {
@@ -443,9 +455,16 @@
     }
 
     if (changed) {
-      lamps.touched = true; // 转入手动模式，让关灯状态生效
       P.Storage.save();
     }
+  }
+
+  // 非手动模式下，卧室夜灯只在当天随机关灯时刻之前自动点亮；凌晨保持关闭。
+  function bedroomLightsAllowed() {
+    const tp = P.Time.now();
+    const today = tp.year + '-' + tp.month + '-' + tp.day;
+    if (!bedroomOffTime || bedroomOffTime.date !== today) initDailyRandom();
+    return tp.hour >= 7.5 && (!bedroomOffTime || tp.hour < bedroomOffTime.time);
   }
 
   P.Lighting = {
@@ -454,6 +473,7 @@
     drawWindowBackdrop: drawWindowBackdrop,
     applyInterior: applyInterior,
     initDailyRandom: initDailyRandom,
-    checkAutoLights: checkAutoLights
+    checkAutoLights: checkAutoLights,
+    bedroomLightsAllowed: bedroomLightsAllowed
   };
 })();

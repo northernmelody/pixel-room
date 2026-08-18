@@ -41,13 +41,14 @@
     const lampState = P.RoomLayout.lights().map(function (l) { return l.on ? '1' : '0'; }).join('');
     const it = P.Storage.state.items || {};
     const pkg = it.pkg || {};
+    const collectibles = Array.isArray(it.collectibles) ? it.collectibles.join(',') : '';
     const meal = P.Character.mealFood ? (P.Character.mealFood() || {}).type || '' : '';
     const perch = P.Cat.perchId ? (P.Cat.perchId() || '') : '';
     const guitarTaken = P.Character.guitarTaken ? (P.Character.guitarTaken() ? '1' : '0') : '0';
     return st.season.id + '|' + lampState + '|' + (P.Storage.state.settings.anim ? '1' : '0') +
       '|' + (it.cup != null ? it.cup : '') + '|' + (it.blanket || '') +
       '|' + (it.bowl != null ? it.bowl : '') + '|' + (it.dogBowl != null ? it.dogBowl : '') + '|' + (it.dishes || 0) +
-      '|' + (pkg.state || '') + '|' + (pkg.item || '') + '|' + meal + '|' + perch + '|g' + guitarTaken;
+      '|' + (pkg.state || '') + '|' + collectibles + '|' + meal + '|' + perch + '|g' + guitarTaken;
   }
 
   function ensureStaticCache(st) {
