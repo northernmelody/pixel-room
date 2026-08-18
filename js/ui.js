@@ -25,7 +25,10 @@
       optAnim: $('opt-anim'),
       reset: $('reset-save'),
       modal: $('computer-modal'),
-      toast: $('toast')
+      toast: $('toast'),
+      lyricBox: $('lyric-box'),
+      lyricTitle: $('lyric-title'),
+      lyricLine: $('lyric-line')
     };
 
     els.soundBtn.addEventListener('click', function () {
@@ -96,8 +99,25 @@
     els.bj.textContent = pad2(bj.hourInt) + ':' + pad2(bj.min) + ':' + pad2(bj.sec);
     const tzH = loc.tzMin >= 0 ? '+' + Math.floor(loc.tzMin / 60) : '' + Math.ceil(loc.tzMin / 60);
     els.local.textContent = '本地 ' + pad2(loc.hourInt) + ':' + pad2(loc.min) + ':' + pad2(loc.sec) + '  UTC' + tzH;
+    // 弹唱中：活动行显示当前曲目
+    let actName = act.name;
+    if (P.Character && P.Character.guitarActive && P.Character.guitarActive()) {
+      const sg = P.Character.guitarSong();
+      if (sg) actName = '🎸 弹唱《' + sg.title + '》';
+    }
     els.act.textContent = '北京 · ' + P.Time.WEEK_CN[bj.weekday] + ' · ' + season.name + '季 · ' +
-      w.condition.emoji + ' ' + w.condition.name + (w.source === 'api' ? ' ' + w.temp + '°C' : '') + ' · ' + ff + ' · ' + act.name;
+      w.condition.emoji + ' ' + w.condition.name + (w.source === 'api' ? ' ' + w.temp + '°C' : '') + ' · ' + ff + ' · ' + actName;
+  }
+
+  // 歌词显示（吉他弹唱）
+  function showLyric(title, line) {
+    if (!els.lyricBox) return;
+    els.lyricTitle.textContent = title ? ('🎸 ' + title) : '';
+    els.lyricLine.textContent = line || '';
+    els.lyricBox.classList.add('show');
+  }
+  function hideLyric() {
+    if (els.lyricBox) els.lyricBox.classList.remove('show');
   }
 
   function toast(msg) {
@@ -111,6 +131,8 @@
   P.UI = {
     init: init,
     update: update,
-    toast: toast
+    toast: toast,
+    showLyric: showLyric,
+    hideLyric: hideLyric
   };
 })();

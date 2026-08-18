@@ -52,6 +52,20 @@
 
   function onClick(e) {
     const p = toLogical(e);
+    // 吉他（卧室右墙边，弹唱触发；先检查小人状态）
+    const gr = P.RoomLayout.hits().find(function (r) { return r.type === 'guitar'; });
+    if (gr && p.x >= gr.x && p.x <= gr.x + gr.w && p.y >= gr.y && p.y <= gr.y + gr.h) {
+      const ret = P.Character.startGuitar();
+      if (ret === 'ok') {
+        if (P.UI) P.UI.toast('🎸 拿起吉他，弹唱《' + P.Character.guitarSong().title + '》～');
+      } else if (ret === 'busy') {
+        if (P.UI) P.UI.toast('🎵 正在弹唱中…');
+      } else if (ret === 'sleep') {
+        if (P.UI) P.UI.toast('🛌 小人在睡觉，别打扰他');
+      }
+      if (P.Audio) P.Audio.ui();
+      return;
+    }
     // 电脑
     const comp = P.RoomLayout.hits().find(function (r) { return r.type === 'computer'; });
     if (comp && p.x >= comp.x && p.x <= comp.x + comp.w && p.y >= comp.y && p.y <= comp.y + comp.h) {

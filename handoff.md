@@ -481,3 +481,80 @@ GitHub 仓库：https://github.com/northernmelody/pixel-room
 - 既有冒烟测试 smoke-dog / smoke-fridge / smoke-leisure 全部通过（无功能回归）；
 - 截图：_shots/plush-final-day.png / plush-night.png。
 
+## 16. 卧室吉他 + 多曲弹唱（2026-08，js/roomLayout.js + js/songs.js + js/character.js）
+
+> 需求：卧室新增像素吉他（静态装饰）。点击吉他时，只要小人不在睡觉时段（00:00–07:30），
+> 小人会走到床边坐下，抱起吉他弹唱一首随机歌曲；弹唱结束后放下吉他，恢复当前时段行为。
+
+### 16.1 吉他绘制与位置（js/roomLayout.js）
+- 位置：卧室右墙边、窗下（逻辑坐标 x=68-76，y=110-126，底部 y=126 ≈ FLOOR-2）。
+  **说明**：需求建议 x≈15-20 处被床垫（x=8-44, y=112-121）完全遮挡，无法既可见又可点；
+  故移至床尾侧（右侧）墙边——满足"床尾靠墙/床侧墙边"，且与床头柜(x46-55)、衣柜(x2-15)、
+  墙面挂件(y56-94)零重叠；冬季暖气管(x58-70,y112-120)会轻微遮住琴体左上 3px（似靠在暖气管后）。
+- 像素吉他约 8×16：琴头深色 #2e2218、琴颈深棕 #4a3320 带 2 条品丝、琴体暖木 #c89050、
+  面板高光 #e8b878、音孔 2×2 #1c1008、琴弦 1px 浅色 #f5ead2、深色 1px 描边 #241408、
+  地面 1-2px 软投影；复用 drawPlushArt()（自动 1px 深色描边，无抗锯齿）。
+- 属 z=1 中景层（drawMidFurniture 末尾调用 drawGuitar），纳入离屏缓存；
+  弹唱时小人"抱走"吉他 → `P.Character.guitarTaken()` 为真 → 静态缓存签名变化自动重建隐藏；
+  结束后恢复显示。
+
+### 16.2 歌曲数据（新建 js/songs.js）
+- `const SONGS = [...]`：每首含 id/title/tempo（每句歌词显示秒数）/endHold（末句额外停留）/
+  lyrics（歌词行数组）。三首：旧画笔(8×1.8+2.5=16.9s)、河岸(7×2.2+3.0=18.4s)、游乐人间(8×2.0+3.0=19s)。
+- 新增歌曲：在 SONGS 数组追加对象即可；歌词长度不限，总时长自动按
+  `lyrics.length × tempo + endHold` 计算。后续可扩展 `weight`（加权随机）、
+  `mood`（欢快/忧伤/平静，影响弹唱表情与摇摆幅度）。
+- index.html 中于 character.js 之前引入（`<script src="js/songs.js">`），暴露 `P.Songs`。
+
+### 16.3 弹唱状态机（js/character.js）
+- **随机选歌 `chooseSong()`**：过滤掉上一首（不连续重复），平均权重随机；
+  `lastSongId/lastSongTime` 记录，后续可扩展 weight 加权与播放次数偏好。
+- `P.Character.startGuitar()` → `'ok' | 'sleep' | 'busy'`：
+  - 睡在床上（pose==='sleep'，覆盖 00:00–07:30 与 22:30–24:00）返回 'sleep'；
+    弹唱中 'busy'；其余时段（洗漱/吃饭/工作/休闲/夜间活动）均可触发。
+  - 触发前快照 `restore = {activity, leisureAct}`（先快照再清空休闲/逗猫状态）。
+- 流程（v2 吉他由小人放回原处）：
+  `go`（走到吉他旁 x=64）→ `pick`（0.8s 抱起，taken=true 墙上吉他隐藏）→
+  `carry`（抱到床边 x=27）→ `sit`（0.5s 坐下）→ `sing`（逐句歌词 + 起手扫弦）→
+  `put`（0.6s 床边放下）→ `back`（抱回吉他位 x=64）→
+  `place`（0.8s 靠墙放回，进入 place 即 taken=false 墙上吉他恢复）→ 结束。
+- sing 阶段：每行显示 `tempo` 秒，末行 `tempo+endHold`；换行 `P.Audio.pluck(每歌固定音高)`
+  + 弹出 1-2 个像素音符；结束 `P.Audio.guitar()` 起手扫弦。
+- 结束后恢复：同段休闲 → `goToLeisure(恢复的活动)` 走回原位继续原活动；
+  其余（洗漱/吃饭/工作/跨时段）→ activity 置哨兵 `'__guitar_done'` → 下一次 update
+  走"活动切换"逻辑按当前时段重新调度（如工作 → 走回 x=147）。
+- 绘制：drawSinging 按阶段分派——go/back 行走（back 身侧竖抱吉他）、
+  pick/place 站立伸手（place 时墙上吉他已恢复）、carry 抱琴行走、put 琴放低、
+  sing 坐床边怀抱吉他（见 16.4 动画细节）。
+
+### 16.4 弹唱动画与歌词（js/character.js）
+- 动画细节：身体/头部左右摇摆 1px·1Hz（`sin(t·2π)`）；左手按弦随歌词每句换把位
+  （`g.line % 3`）；右手拨弦 2Hz 上下交替；嘴巴每 0.5s 开合；眼睛微闭；
+  吉他随节奏轻颠。
+- 歌词显示（DOM 面板）：`showLine()` 调用 `P.UI.showLyric(歌名, 歌词)` 驱动
+  `#lyric-box`（index.html 底部居中暗色面板，css 样式 rem 自适应小屏）；
+  每句显示 tempo 秒、末句 tempo+endHold；结束 `P.UI.hideLyric()` 收起面板。
+  （注：曾改为 Canvas 头顶气泡，因可读性回退为 DOM 面板。）
+- 像素音符：每句开始弹出 1-2 个（1-2px，随机左右偏移，`g.notes` 由 showLine 生成），
+  向上漂浮 4-6px，约 0.5s 淡出（`ctx.globalAlpha` 衰减，drawSingNotes 绘制）。
+- 弹唱时左上活动行显示"🎸 弹唱《歌名》"（ui.js）。
+
+### 16.5 交互 / 音效 / 缓存
+- interaction.js：`hits()` 吉他可点区域 ±8px（x=60, y=104, w=20, h=26，不超房间右界），
+  点击按返回值 toast（🎸 开唱 / 🎵 弹唱中 / 🛌 小人在睡觉，别打扰他）。
+- audio.js：`guitar()`（C 和弦琶音三角波扫弦）+ `pluck(freq)`（单音拨弦带轻微走音）。
+- renderer.js：staticSignature 追加 `|g0/1`（吉他是否被抱起），触发缓存重建隐藏/恢复墙上吉他。
+
+### 16.6 验证
+- `node --check` 全部 JS 通过；`_tools/smoke-guitar.js` 全绿：
+  go→pick→carry→sit→sing（河岸 7 行 18.4s，g.line 0→6、像素音符 notes>0、
+  DOM 歌词 7 行按序显示 + 结束隐藏）→put→back→place（place 时 taken=false 墙上吉他恢复）
+  →done；结束后哨兵重同步回 work x=147；睡在床上拒绝、淋浴可触发、弹唱中 busy、
+  休闲可弹且结束后恢复原活动（goToLeisure）、连唱两首不重复（chooseSong 过滤）；
+  8 阶段 draw() 无抛错。
+- 既有 smoke-fridge / smoke-dog / smoke-leisure 全部通过（无功能回归）；
+- 离线渲染（_tools/render-room.js）像素采样验证：琴头/琴颈/品丝/琴体/面板/音孔/琴弦/描边/投影
+  配色正确，与床头柜/衣柜/挂件零重叠；
+- 截图：_shots/room-guitar.png / room-guitar2.png / room-guitar-v2.png。
+
+

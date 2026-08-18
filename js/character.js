@@ -101,7 +101,9 @@
       // ---- 夜间活动 ----
       nightPlan: null,       // 本夜活动计划 {items:[{atMin,type}], idx}
       nightAct: null,        // 当前夜间活动 null|toilet|drink|snack|phoneToss
-      nightActT: 0
+      nightActT: 0,
+      // ---- 吉他弹唱 ----
+      guitar: null           // 弹唱会话 {phase, t, tMax, song, line, lineT, taken}
     };
     screenMode = pickScreen();
     screenTimer = 8 + Math.random() * 12;
@@ -374,6 +376,13 @@
       return;
     }
 
+    // 吉他弹唱：暂停日常行为，专用状态机负责移动与歌词
+    if (char.guitar) {
+      guitarUpdate(dt);
+      char.animT += dt;
+      return;
+    }
+
     // 活动切换 → 新的目标
     if (act !== char.activity) {
       const prev = char.activity;
@@ -552,6 +561,188 @@
   function reactRandom() { react(); }
 
   // ============================================================
+  // 吉他弹唱（点击卧室吉他触发）
+  // 流程：go（走到吉他旁 x=64）→ pick（抱起，吉他离开墙面）→
+  //       carry（抱着吉他走到床边 x=27）→ sit（坐下）→
+  //       sing（逐句歌词）→ put（床边放下）→ back（抱回吉他位）→
+  //       place（靠墙放回，墙上吉他恢复）→ 结束恢复触发前行为
+  // ============================================================
+  const GUITAR_PICK_X = 64;   // 走到吉他旁的位置（吉他在 x=68-76，站在其左侧）
+  const GUITAR_BED_X = 27;    // 床边坐下的位置（与 read/phone 同侧）
+
+  // 随机选歌：不连续重复同一首（平均权重；后续可扩展 weight 加权 / 播放次数偏好）
+  let lastSongId = null;
+  let lastSongTime = null;
+  function chooseSong() {
+    let available = P.Songs.filter(function (s) { return s.id !== lastSongId; });
+    if (available.length === 0) available = P.Songs;
+    const song = available[Math.floor(Math.random() * available.length)];
+    lastSongId = song.id;
+    lastSongTime = Date.now();
+    return song;
+  }
+
+  // 由 interaction 调用：ok | sleep | busy
+  // 触发条件：除睡在床上外（00:00–07:30 及 22:30–24:00 睡觉时段），
+  // 洗漱/吃饭/工作/休闲/夜间活动等时段均可触发；弹唱中不可重复触发
+  function startGuitar() {
+    if (!char) return 'busy';
+    if (char.guitar) return 'busy';                       // 已在弹唱
+    if (char.pose === 'sleep') return 'sleep';            // 睡在床上不可弹
+    // 触发前状态快照（用于弹唱后恢复）；先快照再清理
+    const restoreAct = char.activity === 'leisure' ? char.leisureAct : null;
+    // 结束正在进行的逗猫（若在逗猫），避免猫陷入 play 状态
+    if (char.leisureAct === 'play_cat' && P.Cat && P.Cat.endPlay) P.Cat.endPlay();
+    char.leisureAct = null;
+    char.react = null;
+    char.guitar = {
+      phase: 'go',
+      t: 0, tMax: 0,
+      song: chooseSong(),
+      line: 0, lineT: 0,
+      taken: false,         // 是否已"抱起"（墙上吉他隐藏）
+      notes: [],            // 像素音符 {x,y,born}
+      restore: { activity: char.activity, leisureAct: restoreAct }
+    };
+    char.target = { room: 0, x: GUITAR_PICK_X, pose: 'sing' };
+    char.moving = true;
+    return 'ok';
+  }
+
+  // 弹唱专用移动（不依赖正常 update 的移动分支）
+  function moveToward(x, pose, dt) {
+    const dx = x - char.x;
+    if (Math.abs(dx) < 0.6) {
+      char.moving = false;
+      char.x = x;
+      if (pose) char.pose = pose;
+      if (pose === 'sing') char.dir = 1;   // 坐床边弹唱固定面朝右（与绘制一致）
+      return true;
+    }
+    char.x += Math.sign(dx) * Math.min(Math.abs(dx), 15 * dt);
+    char.dir = Math.sign(dx) || char.dir;
+    char.walkStep += dt * 9;
+    char.pose = 'walk';
+    char.moving = true;
+    return false;
+  }
+
+  // 每句歌词固定的拨弦频率（由歌 id + 行号确定，稳定可复现）
+  function pluckFreq(song, line) {
+    let seed = 0;
+    for (let i = 0; i < song.id.length; i++) seed += song.id.charCodeAt(i) * (i + 3);
+    seed += line * 7;
+    const scale = [261.6, 293.7, 329.6, 392.0, 440.0, 523.3, 349.2, 587.3];
+    return scale[seed % scale.length];
+  }
+
+  // 每句开始时：更新 DOM 歌词面板 + 弹出 1-2 个像素音符（随机左右偏移），音符由 drawSing 绘制漂浮淡出
+  function showLine() {
+    const g = char.guitar;
+    if (P.UI && P.UI.showLyric) P.UI.showLyric(g.song.title, g.song.lyrics[g.line]);
+    const t = performance.now() / 1000;
+    g.notes = (g.notes || []).filter(function (x) { return t - x.born < 0.6; });
+    const n = 1 + ((Math.random() * 2) | 0);
+    for (let i = 0; i < n; i++) {
+      g.notes.push({
+        x: Math.round(char.x - 10 + Math.random() * 8),
+        y: 80 - Math.round(Math.random() * 4),
+        born: t + i * 0.15
+      });
+    }
+  }
+
+  function guitarUpdate(dt) {
+    const g = char.guitar;
+    g.t += dt;
+    if (char.arriveT > 0) char.arriveT -= dt;
+    switch (g.phase) {
+      case 'go':            // 走向吉他（x=64）
+        if (!moveToward(GUITAR_PICK_X, 'sing', dt)) break;
+        g.phase = 'pick'; g.t = 0; g.tMax = 0.8;
+        break;
+      case 'pick':          // 抱起吉他
+        if (g.t >= g.tMax) {
+          g.taken = true;   // 墙上吉他隐藏（staticSignature 变化 → 缓存重建）
+          g.phase = 'carry';
+          char.target = { room: 0, x: GUITAR_BED_X, pose: 'sing' };
+          char.moving = true;
+        }
+        break;
+      case 'carry':         // 抱着吉他走到床边（x=27）
+        if (!moveToward(GUITAR_BED_X, 'sing', dt)) break;
+        g.phase = 'sit'; g.t = 0; g.tMax = 0.5;
+        char.arriveT = 0.5;   // 坐下过渡
+        break;
+      case 'sit':           // 坐下
+        if (g.t >= g.tMax) {
+          g.phase = 'sing';
+          g.t = 0;
+          g.tMax = g.song.tempo * g.song.lyrics.length + g.song.endHold;  // 总时长动态计算
+          g.line = 0; g.lineT = 0;
+          showLine();
+          if (P.Audio && P.Audio.guitar) P.Audio.guitar();   // 起手扫弦
+        }
+        break;
+      case 'sing': {        // 逐句弹唱
+        g.lineT += dt;
+        const isLast = g.line >= g.song.lyrics.length - 1;
+        const lineDur = isLast ? g.song.tempo + g.song.endHold : g.song.tempo;
+        if (!isLast && g.lineT >= lineDur) {
+          g.line++;
+          g.lineT = 0;
+          showLine();
+          if (P.Audio && P.Audio.pluck) P.Audio.pluck(pluckFreq(g.song, g.line));
+        }
+        if (g.t >= g.tMax) {
+          g.phase = 'put'; g.t = 0; g.tMax = 0.6;
+        }
+        break;
+      }
+      case 'put':           // 床边放下吉他（起身）
+        if (g.t >= g.tMax) {
+          g.phase = 'back';
+          char.target = { room: 0, x: GUITAR_PICK_X, pose: 'sing' };
+          char.moving = true;
+        }
+        break;
+      case 'back':          // 抱着吉他走回吉他位（x=64）
+        if (!moveToward(GUITAR_PICK_X, 'sing', dt)) break;
+        g.phase = 'place'; g.t = 0; g.tMax = 0.8;
+        g.taken = false;    // 墙上吉他恢复显示（staticSignature 变化 → 缓存重建）
+        break;
+      case 'place':         // 靠墙放回
+        if (g.t >= g.tMax) {
+          finishGuitar();
+        }
+        break;
+    }
+  }
+
+  function finishGuitar() {
+    const restore = char.guitar ? char.guitar.restore : null;
+    char.guitar = null;       // 吉他已由小人放回原处（taken 随 guitar 清除）
+    char.react = null;
+    if (P.UI && P.UI.hideLyric) P.UI.hideLyric();   // 收起歌词面板
+    const tp = P.Time.now();
+    const act = P.Time.getSchedule(tp).id;
+    if (restore && act === restore.activity && act === 'leisure' && restore.leisureAct) {
+      // 同段休闲：恢复触发前的休闲活动（走回原位继续）
+      char.activity = 'leisure';
+      goToLeisure(restore.leisureAct);
+    } else {
+      // 其余情况（含跨时段/洗漱/吃饭/工作等短时行为）：按当前时段重新调度
+      char.activity = '__guitar_done';
+      char.target = { room: 1, x: 147, pose: 'idle' };
+      char.moving = true;
+    }
+  }
+
+  function guitarActive() { return !!(char && char.guitar); }
+  function guitarSong() { return (char && char.guitar) ? char.guitar.song : null; }
+  function guitarTaken() { return !!(char && char.guitar && char.guitar.taken); }
+
+  // ============================================================
   // 绘制
   // ============================================================
   function outfit(st) {
@@ -633,6 +824,9 @@
     // 影子
     ctx.fillStyle = 'rgba(0,0,0,0.16)';
     ctx.fillRect(hx - 6, FLOOR - 1, 12, 2);
+
+    // 吉他弹唱（优先级最高）
+    if (char.guitar) { drawSinging(ctx, hx, d, o, t); return; }
 
     // 点击反应优先
     if (char.react) { drawReact(ctx, hx, d, o, t); return; }
@@ -956,6 +1150,160 @@
     ctx.fillRect(hx - 6, 105 + st, 1, 1);
     ctx.fillRect(hx + 4, 105 + st, 1, 1);
     drawHead(ctx, hx - 7, 89 + bob, 1);
+  }
+
+  // ============================================================
+  // 吉他弹唱绘制（按阶段分派）
+  // ============================================================
+  function drawSinging(ctx, hx, d, o, t) {
+    const g = char.guitar;
+    switch (g.phase) {
+      case 'go':    drawWalk(ctx, hx, d, o, t); return;                  // 走向吉他
+      case 'pick':  drawPickGuitar(ctx, hx, o, t); return;               // 抱起吉他
+      case 'carry': drawCarryGuitar(ctx, hx, d, o, t); return;           // 抱着吉他走向床边
+      case 'put':   drawPutGuitar(ctx, hx, o, t); return;                // 床边放下
+      case 'back':  drawCarryGuitar(ctx, hx, d, o, t); return;           // 抱着吉他走回吉他位
+      case 'place': drawPickGuitar(ctx, hx, o, t); return;               // 靠墙放回（墙上吉他已恢复）
+      default:      drawSing(ctx, hx, o, t); return;                     // sit / sing 坐姿弹唱
+    }
+  }
+
+  // 站在吉他旁，伸手抱起吉他（吉他仍在墙上，pick 结束才隐藏）
+  function drawPickGuitar(ctx, hx, o, t) {
+    drawStandBody(ctx, hx, o);
+    const k = Math.min(1, char.guitar.t / char.guitar.tMax);   // 0→1 伸手
+    // 手臂伸向右侧墙上吉他
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx + 3, 108, 2, 4);
+    ctx.fillRect(hx + 4, 110, 2, 3 + Math.round(k * 3));
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(hx + 5, 113 + Math.round(k * 3), 2, 2);       // 手
+    drawHead(ctx, hx - 6, 95, 1);
+  }
+
+  // 抱着吉他走向床边（竖抱在身体右侧，随步伐轻颠）
+  function drawCarryGuitar(ctx, hx, d, o, t) {
+    drawWalk(ctx, hx, d, o, t);
+    const bob = Math.abs(Math.sin(char.walkStep)) * 1.2;
+    ctx.fillStyle = '#c89050';
+    ctx.fillRect(hx + 5, 104 - bob, 4, 6);                     // 琴体
+    ctx.fillStyle = '#e8b878';
+    ctx.fillRect(hx + 6, 105 - bob, 2, 2);                     // 面板高光
+    ctx.fillStyle = '#1c1008';
+    ctx.fillRect(hx + 6, 107 - bob, 2, 2);                     // 音孔
+    ctx.fillStyle = '#4a3320';
+    ctx.fillRect(hx + 6, 98 - bob, 2, 6);                      // 琴颈
+    ctx.fillStyle = '#2e2218';
+    ctx.fillRect(hx + 6, 95 - bob, 2, 3);                      // 琴头
+    ctx.fillStyle = '#f5ead2';
+    ctx.fillRect(hx + 6, 98 - bob, 1, 10);                     // 琴弦
+    ctx.fillRect(hx + 7, 98 - bob, 1, 10);
+  }
+
+  // 坐床边弹唱（面朝右，怀抱吉他）
+  // 动画：身体/头部左右摇摆 1px·1Hz；左手随每句歌词在琴颈换把位；
+  //       右手拨弦 2Hz 上下交替；嘴巴每 0.5s 开合；眼睛微闭；
+  //       头顶上方 16-20px 歌词气泡（淡入淡出）+ 每句弹出像素音符漂浮
+  function drawSing(ctx, hx, o, t) {
+    const g = char.guitar;
+    const st = sitEase();
+    const swayX = Math.round(Math.sin(t * Math.PI * 2) * 0.5);   // 1px·1Hz 左右摇摆
+    const bx = hx + swayX;
+    const headY = 89 + Math.round(Math.sin(t * 1.3) * 0.4);     // 头部轻微浮动
+    // 腿（床边坐姿，固定）
+    ctx.fillStyle = o.pants;
+    ctx.fillRect(hx + 2, 112 + st, 6, 5);
+    ctx.fillRect(hx + 5, 117 + st, 3, 11);
+    ctx.fillStyle = '#3a3028';
+    ctx.fillRect(hx + 5, 126, 3, 2);
+    // 躯干（随摇摆）
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(bx - 4, 100 + st, 8, 13);
+    drawFolds(ctx, bx, 100 + st, o.shirt);
+    // 吉他（斜抱：琴体在右腿上，琴颈斜向左上；随节奏轻颠）
+    const gy = 107 + st + Math.round(Math.sin(t * 2.4) * 0.5);
+    ctx.fillStyle = '#c89050';
+    ctx.fillRect(bx + 1, gy, 6, 7);                              // 琴体
+    ctx.fillStyle = '#e8b878';
+    ctx.fillRect(bx + 2, gy + 1, 4, 2);                          // 面板高光
+    ctx.fillStyle = '#1c1008';
+    ctx.fillRect(bx + 3, gy + 3, 2, 2);                          // 音孔
+    ctx.fillStyle = '#4a3320';
+    for (let i = 0; i < 7; i++) ctx.fillRect(bx + 3 - i, gy - 1 - i, 2, 1);  // 琴颈（阶梯）
+    ctx.fillStyle = '#2e2218';
+    ctx.fillRect(bx - 6, gy - 9, 3, 2);                          // 琴头
+    ctx.fillStyle = '#f5ead2';
+    ctx.fillRect(bx + 3, gy + 1, 1, 3);                          // 琴弦
+    ctx.fillRect(bx + 5, gy + 1, 1, 3);
+    // 右手拨弦（音孔下方，2Hz 上下交替）
+    const hand = Math.round(Math.sin(t * Math.PI * 4) * 0.8);
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(bx + 5, gy + 5 + hand, 2, 1);
+    // 左手按弦（随歌词每句在琴颈上下换把位）
+    const fret = g.line % 3;
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(bx + 3 - fret, gy - 2 - fret, 2, 1);
+    // 头（随身体摇摆，微闭眼唱歌）
+    drawHead(ctx, bx - 7, headY, 1);
+    // 闭眼（微闭）
+    ctx.fillStyle = '#5a4030';
+    ctx.fillRect(bx - 4, headY + 7, 2, 1);
+    ctx.fillRect(bx, headY + 7, 2, 1);
+    // 嘴巴（每 0.5s 开合）
+    const mouthOpen = Math.floor(t * 2) % 2 === 0;
+    if (mouthOpen) {
+      ctx.fillStyle = '#5a3020';
+      ctx.fillRect(bx - 3, headY + 8, 2, 2);
+    } else {
+      ctx.fillStyle = '#c47a5a';
+      ctx.fillRect(bx - 3, headY + 9, 2, 1);
+    }
+    // 像素音符漂浮（歌词文字改由 DOM #lyric-box 显示）
+    drawSingNotes(ctx, bx, t);
+  }
+
+  // 像素音符：每句开始弹出 1-2 个（showLine 生成），向上漂浮 4-6px，约 0.5s 淡出
+  function drawSingNotes(ctx, hx, t) {
+    const g = char.guitar;
+    if (!g) return;
+    const notes = g.notes || [];
+    for (let i = 0; i < notes.length; i++) {
+      const n = notes[i];
+      const age = t - n.born;
+      if (age < 0 || age > 0.55) continue;
+      const k = age / 0.5;
+      ctx.globalAlpha = Math.max(0, 1 - k);
+      ctx.fillStyle = '#ffd98a';
+      const ny = n.y - Math.round(k * 6);
+      ctx.fillRect(n.x, ny, 2, 1);         // 符头
+      ctx.fillRect(n.x + 1, ny - 2, 1, 2); // 符干
+      ctx.fillRect(n.x + 2, ny - 2, 1, 1); // 符尾
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // 放下吉他（坐姿，琴放低至腿边，手松开）
+  function drawPutGuitar(ctx, hx, o, t) {
+    const st = sitEase();
+    ctx.fillStyle = o.pants;
+    ctx.fillRect(hx + 2, 112 + st, 6, 5);
+    ctx.fillRect(hx + 5, 117 + st, 3, 11);
+    ctx.fillStyle = '#3a3028';
+    ctx.fillRect(hx + 5, 126, 3, 2);
+    ctx.fillStyle = o.shirt;
+    ctx.fillRect(hx - 4, 100 + st, 8, 13);
+    drawFolds(ctx, hx, 100 + st, o.shirt);
+    // 吉他放低（比弹唱时低 3px）
+    const gy = 110 + st;
+    ctx.fillStyle = '#c89050';
+    ctx.fillRect(hx + 1, gy, 6, 6);
+    ctx.fillStyle = '#1c1008';
+    ctx.fillRect(hx + 3, gy + 2, 2, 2);
+    ctx.fillStyle = '#4a3320';
+    ctx.fillRect(hx + 4, gy - 1, 2, 3);                        // 琴颈短斜
+    ctx.fillStyle = SKIN;
+    ctx.fillRect(hx + 5, gy + 4, 2, 1);                        // 手松开
+    drawHead(ctx, hx - 7, 89, 1);
   }
 
   // 健身：深蹲 / 俯卧撑 / 开合跳（由 leisureSub 轮换，每 30-60 秒换动作）
@@ -1425,6 +1773,11 @@
     mealFood: mealFood,
     react: react,
     reactRandom: reactRandom,
+    // ---- 吉他弹唱 ----
+    startGuitar: startGuitar,
+    guitarActive: guitarActive,
+    guitarSong: guitarSong,
+    guitarTaken: guitarTaken,
     _debug: function () {
       if (!char) return null;
       return {
@@ -1433,7 +1786,9 @@
         washSeq: char.washSeq, washT: char.washT, react: char.react,
         leisureAct: char.leisureAct, leisureT: Math.round(char.leisureT),
         leisureSub: char.leisureSub, leisureSubT: Math.round(char.leisureSubT),
-        nightAct: char.nightAct, nightPlan: char.nightPlan
+        nightAct: char.nightAct, nightPlan: char.nightPlan,
+        guitar: char.guitar ? { phase: char.guitar.phase, line: char.guitar.line, t: Math.round(char.guitar.t), taken: char.guitar.taken, song: char.guitar.song.id, notes: (char.guitar.notes || []).length, restore: char.guitar.restore ? char.guitar.restore.activity : null } : null,
+        lastSongId: lastSongId, lastSongTime: lastSongTime
       };
     }
   };

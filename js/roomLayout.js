@@ -24,6 +24,7 @@
       clock: { x: 16, y: 56, w: 7, h: 7 },
       acSpot: { x: 6, y: 44, w: 14, h: 9 },
       heaterSpot: { x: 58, y: 112, w: 12, h: 8 },
+      guitar: { x: 68, y: 110, w: 8, h: 16 },  // 卧室吉他（右墙边、窗下，弹唱时被小人"抱走"隐藏）
       ceilingLamp: { x: 40 }
     },
     workspace: {
@@ -174,6 +175,9 @@
     }
     out.push({ type: 'lamp', lamp: 'deskLamp', x: 134, y: 92, w: 11, h: 16 });
     out.push({ type: 'lamp', lamp: 'nightLamp', x: 46, y: 98, w: 10, h: 16 });
+    // 吉他（卧室右墙边，±8px 点击宽容区，不超出房间右界）
+    const gr = FURN.bedroom.guitar;
+    out.push({ type: 'guitar', x: Math.max(0, gr.x - 8), y: gr.y - 6, w: Math.min(gr.w + 16, 80 - Math.max(0, gr.x - 8)), h: gr.h + 12 });
     return out;
   }
 
@@ -814,6 +818,56 @@
     drawToilet(ctx, st);              // 马桶
     drawShower(ctx, st);              // 淋浴间
     drawBathCabinet(ctx, st);         // 卫生间吊柜
+    drawGuitar(ctx, st);              // 卧室吉他（z=1 中景静态装饰）
+  }
+
+  // 卧室像素吉他（约 8×16，倾斜靠墙，z=1 中景静态，纳入离屏缓存）
+  // 弹唱进行中（小人"抱走"吉他）时跳过绘制；结束后自动恢复（由 staticSignature 触发缓存重建）
+  function drawGuitar(ctx, st) {
+    if (P.Character && P.Character.guitarTaken && P.Character.guitarTaken()) return;
+    const G = FURN.bedroom.guitar;
+    // 地面 1-2px 软投影（吉他底部在 FLOOR-2，投影落在其下与地板上）
+    ctx.fillStyle = 'rgba(24,18,12,0.28)';
+    ctx.fillRect(G.x, G.y + G.h + 1, G.w, 1);
+    ctx.fillStyle = 'rgba(24,18,12,0.14)';
+    ctx.fillRect(G.x + 1, G.y + G.h + 2, G.w - 2, 1);
+    // 像素图：H 琴头深色 / N 琴颈深棕 / W 琴体暖木 / S 面板高光
+    const pal = { H: '#2e2218', N: '#4a3320', W: '#c89050', S: '#e8b878' };
+    const art = [
+      '..HHHH..',
+      '..HHHH..',
+      '..HHHH..',
+      '...NNN..',
+      '...NNN..',
+      '...NNN..',
+      '...NNN..',
+      '...NNN..',
+      '..WWWW..',
+      '.WWWWWW.',
+      '.WSSSSW.',
+      '.WSSSSW.',
+      '.WSSSSW.',
+      '.WSSSSW.',
+      '.WWWWWW.',
+      '..WWWW..'
+    ];
+    drawPlushArt(ctx, art, pal, G.x, G.y, '#241408');  // 深色 1px 描边
+    // 品丝（琴颈浅色横线）
+    ctx.fillStyle = '#d8b888';
+    ctx.fillRect(G.x + 3, G.y + 4, 3, 1);
+    ctx.fillRect(G.x + 3, G.y + 6, 3, 1);
+    // 下弦枕（琴体下部深色横条）
+    ctx.fillStyle = '#5a3a20';
+    ctx.fillRect(G.x + 2, G.y + 13, 4, 1);
+    // 琴弦（1px 浅色竖线，跨过音孔位置）
+    ctx.fillStyle = '#f5ead2';
+    ctx.fillRect(G.x + 3, G.y + 3, 1, 11);
+    ctx.fillRect(G.x + 4, G.y + 3, 1, 11);
+    // 音孔 2×2 深色圆点（画在弦上，琴弦似伸入音孔）
+    ctx.fillStyle = '#1c1008';
+    ctx.fillRect(G.x + 3, G.y + 10, 2, 2);
+    ctx.fillStyle = '#0e0804';
+    ctx.fillRect(G.x + 3, G.y + 10, 1, 1);  // 音孔内侧阴影
   }
 
   function drawWardrobe(ctx, st) {

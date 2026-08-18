@@ -203,6 +203,38 @@
     updateAmbient: updateAmbient,
     ui: function () { tone({ type: 'square', f0: 720, dur: 0.06, vol: 0.05 }); },
     lamp: function () { noiseBurst(0.03, 0.12, 2200); tone({ type: 'square', f0: 1400, dur: 0.03, vol: 0.04 }); },
+    // 吉他起手扫弦（C 大调和弦琶音，柔和衰减）
+    guitar: function () {
+      if (!actx || !enabled || !master) return;
+      const t0 = actx.currentTime;
+      const notes = [261.6, 329.6, 392.0, 493.9, 523.3];   // C4 E4 G4 B4 C5
+      notes.forEach(function (f, i) {
+        const o = actx.createOscillator(); o.type = 'triangle';
+        o.frequency.setValueAtTime(f, t0 + i * 0.05);
+        const f2 = actx.createBiquadFilter(); f2.type = 'lowpass'; f2.frequency.value = 2400;
+        const g = actx.createGain();
+        g.gain.setValueAtTime(0, t0 + i * 0.05);
+        g.gain.linearRampToValueAtTime(0.05, t0 + i * 0.05 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.05 + 0.85);
+        o.connect(f2); f2.connect(g); g.connect(master);
+        o.start(t0 + i * 0.05); o.stop(t0 + i * 0.05 + 0.95);
+      });
+    },
+    // 单音拨弦（每句歌词的轻拨）
+    pluck: function (freq) {
+      if (!actx || !enabled || !master) return;
+      const f = freq || 440;
+      const t0 = actx.currentTime;
+      const o = actx.createOscillator(); o.type = 'triangle';
+      o.frequency.setValueAtTime(f, t0);
+      o.frequency.setValueAtTime(f * 1.002, t0 + 0.01);     // 轻微走音，更像拨弦
+      const g = actx.createGain();
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(0.035, t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.4);
+      o.connect(g); g.connect(master);
+      o.start(t0); o.stop(t0 + 0.45);
+    },
     meow: function () {
       if (!actx || !enabled || !master) return;
       const t0 = actx.currentTime;
