@@ -1695,8 +1695,19 @@
     }
   }
 
+  function drawPixelHeart(ctx, x, y, color) {
+    px(ctx, x + 1, y, 3, 2, color);
+    px(ctx, x + 6, y, 3, 2, color);
+    px(ctx, x, y + 2, 10, 3, color);
+    px(ctx, x + 2, y + 5, 6, 2, color);
+    px(ctx, x + 4, y + 7, 2, 2, color);
+    px(ctx, x + 2, y + 1, 1, 1, '#ffd4df');
+  }
+
   function drawLargeChat(ctx, t, x, y, w, h) {
     const top = y + 4;
+    const tp = P.Time.now();
+    const isQixi = tp.year === 2026 && tp.month === 8 && tp.day === 19;
     if (CHAT_COUPLE_BG && CHAT_COUPLE_BG.complete && CHAT_COUPLE_BG.naturalWidth) {
       const srcH = CHAT_COUPLE_BG.naturalWidth * ((h - 4) / w);
       const sy = Math.max(0, (CHAT_COUPLE_BG.naturalHeight - srcH) / 2);
@@ -1707,16 +1718,32 @@
     }
     ctx.fillStyle = 'rgba(7,12,24,0.36)';
     ctx.fillRect(x, top, w, h - 4);
+    if (isQixi) {
+      ctx.fillStyle = 'rgba(104,24,67,0.18)';
+      ctx.fillRect(x, top, w, h - 4);
+      // 七夕限定：缓慢漂浮的小爱心与星光
+      for (let i = 0; i < 5; i++) {
+        const hx = x + 155 + ((i * 37 + Math.floor(t * 5)) % Math.max(40, w - 170));
+        const hy = top + 30 + ((i * 29 - Math.floor(t * 4) + h * 4) % Math.max(25, h - 55));
+        px(ctx, hx, hy, 2, 2, i % 2 ? '#ff91ad' : '#ffd4a3');
+        px(ctx, hx + 2, hy + 1, 1, 1, '#fff0dc');
+      }
+    }
     ctx.fillStyle = 'rgba(15,22,38,0.92)';
     ctx.fillRect(x, top, w, 20);
     drawChatName(ctx, x + 9, top + 3);
     px(ctx, x + 61, top + 6, 4, 4, '#4ae07a');
     ctx.font = '6px "Microsoft YaHei", sans-serif';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = '#8fa2ba';
-    ctx.fillText('在线 · 刚刚', x + 69, top + 5);
+    ctx.fillStyle = isQixi ? '#ffb5c8' : '#8fa2ba';
+    ctx.fillText(isQixi ? '七夕限定 · 今夜星河' : '在线 · 刚刚', x + 69, top + 5);
 
-    const messages = [
+    const messages = isQixi ? [
+      { mine: true,  y: 29, w: 105, text: '七夕节快乐', heart: true },
+      { mine: false, y: 57, w: 116, text: '你也七夕节快乐', heart: true },
+      { mine: true,  y: 85, w: 126, text: '我们在一起可以吗？' },
+      { typing: true, y: 118, text: '对方正在输入' }
+    ] : [
       { mine: false, y: 29, w: 112, text: '今天也在写代码吗？' },
       { mine: true,  y: 57, w: 132, text: '嗯，刚修好一个小 bug 🐛' },
       { mine: false, y: 85, w: 126, text: '辛苦啦，晚上一起散步？' },
@@ -1725,11 +1752,19 @@
     for (let i = 0; i < messages.length; i++) {
       const m = messages[i];
       const bx = x + 10;
+      if (m.typing) {
+        ctx.fillStyle = '#ffd5df';
+        ctx.fillText(m.text, bx + 3, top + m.y + 4);
+        const dots = 1 + (Math.floor(t * 3) % 3);
+        for (let d = 0; d < dots; d++) px(ctx, bx + 51 + d * 4, top + m.y + 7, 2, 2, '#ff91ad');
+        continue;
+      }
       ctx.fillStyle = m.mine ? 'rgba(51,91,68,0.94)' : 'rgba(34,48,77,0.94)';
       ctx.fillRect(bx, top + m.y, m.w, 20);
       ctx.fillRect(bx + 4, top + m.y + 20, 7, 3);
       ctx.fillStyle = '#f0f4ff';
       ctx.fillText(m.text, bx + 7, top + m.y + 6);
+      if (m.heart) drawPixelHeart(ctx, bx + m.w - 16, top + m.y + 5, '#ff6487');
     }
     // 像素表情包：猫脸 + 爱心
     const sx = x + 145, sy = top + 88 + (Math.floor(t * 2) % 2);
