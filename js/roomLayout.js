@@ -234,12 +234,25 @@
 
   function lights() {
     const out = [];
+    // 每间房的顶灯独立配置（半径/亮度/色温不同，避免四盏一致的环境雾）：
+    // 卧室暖黄、工作区中性、卫生间冷白、厨房暖黄偏强
+    const CEILING_LAMPS = [
+      { x: 40,  r: 34, a: 0.42, c: [255, 228, 170] },
+      { x: 120, r: 38, a: 0.46, c: [255, 238, 195] },
+      { x: 200, r: 30, a: 0.38, c: [232, 245, 255] },
+      { x: 280, r: 36, a: 0.42, c: [255, 222, 156] }
+    ];
     for (let i = 0; i < 4; i++) {
-      const lx = FURN[C.ROOM_IDS[i]].ceilingLamp.x;
-      out.push({ kind: 'ceiling', room: i, x: lx, y: 50, r: 46, a: 0.5, on: lampOn('ceiling', i), seed: i * 3 + 1 });
+      const cl = CEILING_LAMPS[i];
+      out.push({
+        kind: 'ceiling', room: i, x: cl.x, y: 50,
+        r: cl.r, a: cl.a, c: cl.c,
+        on: lampOn('ceiling', i), seed: i * 3 + 1
+      });
     }
-    out.push({ kind: 'deskLamp', x: 139, y: 97, r: 24, a: 0.68, on: lampOn('deskLamp'), seed: 11 });
-    out.push({ kind: 'nightLamp', x: 50.5, y: 102, r: 24, a: 0.55, on: lampOn('nightLamp'), seed: 17 });
+    // 台灯/床头灯：小半径局部光（r 明显小于原 24，避免过曝白球）
+    out.push({ kind: 'deskLamp', x: 139, y: 97, r: 15, a: 0.5, c: [255, 236, 190], on: lampOn('deskLamp'), seed: 11 });
+    out.push({ kind: 'nightLamp', x: 50.5, y: 102, r: 13, a: 0.42, c: [255, 226, 172], on: lampOn('nightLamp'), seed: 17 });
     return out;
   }
 

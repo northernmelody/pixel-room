@@ -71,12 +71,12 @@
     if (ast.sunElev > 0) {
       const sx = x0 + wSpan * (0.12 + ast.sunT * 0.76);
       const sy = y0 + hSpan * (1 - ast.sunElev * 0.92);
-      const r = Math.max(2, hSpan * (inWin ? 0.15 : 0.24));
-      const glowMul = inWin ? [1.9, 2.3, 2.1, 2.4][idx] : 3.2;
+      const r = Math.max(2, hSpan * (inWin ? 0.11 : 0.24));
+      const glowMul = inWin ? [1.6, 1.9, 1.75, 2.0][idx] : 3.2;
       // 光晕（窗模式：更淡、更白，降低饱和与不透明度）
       const glow = ctx.createRadialGradient(sx, sy, 1, sx, sy, r * glowMul);
-      const ga = (inWin ? 0.26 : 0.5) * ast.sunElev * alphaMul2 * expo;
-      glow.addColorStop(0, rgba(255, 240, 205, Math.min(0.42, ga * 1.4)));
+      const ga = (inWin ? 0.2 : 0.5) * ast.sunElev * alphaMul2 * expo;
+      glow.addColorStop(0, rgba(255, 240, 205, Math.min(0.36, ga * 1.4)));
       glow.addColorStop(1, rgba(255, 240, 205, 0));
       ctx.fillStyle = glow;
       ctx.fillRect(sx - r * glowMul, sy - r * glowMul, r * glowMul * 2, r * glowMul * 2);
@@ -92,11 +92,11 @@
     } else if (ast.moonElev > 0) {
       const mx = x0 + wSpan * (0.88 - ast.moonT * 0.76);
       const my = y0 + hSpan * (1 - ast.moonElev * 0.92);
-      const r = Math.max(2, hSpan * (inWin ? 0.14 : 0.22));
-      const glowMul = inWin ? [1.8, 2.2, 2.0, 2.3][idx] : 3;
+      const r = Math.max(2, hSpan * (inWin ? 0.12 : 0.22));
+      const glowMul = inWin ? [1.5, 1.8, 1.65, 1.9][idx] : 3;
       const glow = ctx.createRadialGradient(mx, my, 1, mx, my, r * glowMul);
-      const ga = (inWin ? 0.3 : 0.4) * ast.moonElev * alphaMul2 * expo;
-      glow.addColorStop(0, rgba(210, 220, 255, Math.min(0.42, ga)));
+      const ga = (inWin ? 0.25 : 0.4) * ast.moonElev * alphaMul2 * expo;
+      glow.addColorStop(0, rgba(210, 220, 255, Math.min(0.38, ga)));
       glow.addColorStop(1, rgba(210, 220, 255, 0));
       ctx.fillStyle = glow;
       ctx.fillRect(mx - r * glowMul, my - r * glowMul, r * glowMul * 2, r * glowMul * 2);
@@ -193,15 +193,20 @@
     }
   }
 
-  // 窗户内的天空底 + 天体（winIdx 传入时：内容裁剪在玻璃范围内，天体按窗户采光微差）
+  // 窗户内的天空底 + 天体（winIdx 传入时：内容裁剪在玻璃范围内，暮色按窗户采光微差）
   function drawWindowBackdrop(ctx, st, x, y, w, h, winIdx) {
     const day = st.day, tw = st.tw;
     const cloudiness = st.weather.condition.cloud || 0;
+    const idx = typeof winIdx === 'number' ? winIdx % 4 : 0;
+    // 每扇窗暮色强度微差（采光/朝向不同），避免四窗完全一致的色块
+    const dawnK = [0.78, 1.05, 0.85, 1.0][idx];
     let top = mix(C.COLORS.skyNightMid, C.COLORS.skyDayMid, day);
     let bot = mix(C.COLORS.skyNightBot, C.COLORS.skyDayBot, day);
     if (tw > 0.02) {
-      top = mix(top, C.COLORS.skyDawnMid, Math.min(1, tw * 1.4));
-      bot = mix(bot, C.COLORS.skyDawnBot, Math.min(1, tw * 1.4));
+      const d2 = Math.min(1, tw * 1.25 * dawnK);
+      // 柔和暮色（比原版降饱和，暖色集中在窗底，避免贴片色块感）
+      top = mix(top, '#6d5c92', d2 * 0.7);
+      bot = mix(bot, '#e59760', d2);
     }
     if (cloudiness > 0.1) {
       top = mix(top, '#4a5260', cloudiness);
@@ -212,8 +217,10 @@
     ctx.beginPath();
     ctx.rect(x, y, w, h);
     ctx.clip();
+    // 三段渐变：暖色集中在窗底（外部地平线方向），上部保持天空色
     const g = ctx.createLinearGradient(0, y, 0, y + h);
     g.addColorStop(0, top);
+    g.addColorStop(0.55, mix(top, bot, 0.42));
     g.addColorStop(1, bot);
     ctx.fillStyle = g;
     ctx.fillRect(x, y, w, h);
@@ -336,21 +343,22 @@
         const warm = Math.max(0, Math.min(1, st.tw * 1.15));
         const g = 252 - Math.round(warm * 40);
         const b = 248 - Math.round(warm * 100);
-        a = (0.15 + 0.13 * st.day) * (cfg.bright || 1) * dayK;
+        a = (0.12 + 0.10 * st.day) * (cfg.bright || 1) * dayK;
         // 缓慢呼吸，避免呆板
         a *= 0.98 + Math.sin(t * 0.5 + i * 1.3) * 0.02;
         col = [255, g, b];
       } else {
         // 夜间月光：冷蓝，更柔和
         col = [198, 210, 255];
-        a = 0.07 * (cfg.bright || 1);
+        a = 0.06 * (cfg.bright || 1);
       }
       if (a <= 0.004) continue;
 
-      // 椭圆光晕：长轴贴合窗口结构，边缘快速衰减（去除矩形色块感）；
+      // 椭圆光晕：中心略微下移（光从窗口洒向下方墙面与地面，而非对称环状），
       // 挖掉玻璃区域 → 亮光落在窗框四周，不会涂在玻璃上
+      const cY = cy + w.h * 0.16;
       ctx.save();
-      ctx.translate(cx, cy);
+      ctx.translate(cx, cY);
       ctx.scale(cfg.rx || 30, cfg.ry || 36);
       const g0 = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
       g0.addColorStop(0, rgba(col[0], col[1], col[2], a));
@@ -361,7 +369,7 @@
       ctx.beginPath();
       ctx.ellipse(0, 0, 1, 1, 0, 0, Math.PI * 2);
       const rx = cfg.rx || 30, ry = cfg.ry || 36;
-      ctx.rect((w.x - cx) / rx, (w.y - cy) / ry, w.w / rx, w.h / ry);
+      ctx.rect((w.x - cx) / rx, (w.y - cY) / ry, w.w / rx, w.h / ry);
       ctx.fill('evenodd');
       ctx.restore();
 
@@ -416,35 +424,65 @@
     // 4) 电脑屏幕冷光
     drawScreenGlow(ctx, st, t);
 
-    // 5) 灯具光（暖光晕，径向渐变，边缘柔和）
+    // 5) 灯具光：小范围受光 + 表面光池（光落在地面/桌面/床铺上，而非空气变亮）
     ctx.globalCompositeOperation = 'lighter';
     const lights = P.RoomLayout ? P.RoomLayout.lights() : [];
     for (let i = 0; i < lights.length; i++) {
       const l = lights[i];
       if (!l.on) continue;
+      const cc = l.c || [255, 232, 180];
       const flicker = 1 + Math.sin(t * 11 + l.seed * 7) * 0.03 + (Math.random() - 0.5) * 0.02;
       const a = l.a * flicker;
-      // 主光晕
-      const g = ctx.createRadialGradient(l.x, l.y, 1, l.x, l.y, l.r);
-      g.addColorStop(0, rgba(255, 240, 180, a * 1.15));
-      g.addColorStop(0.3, rgba(255, 222, 140, a * 0.85));
-      g.addColorStop(0.65, rgba(255, 200, 108, a * 0.4));
-      g.addColorStop(1, rgba(255, 200, 108, 0));
-      ctx.fillStyle = g;
-      ctx.fillRect(l.x - l.r, l.y - l.r, l.r * 2, l.r * 2);
-      // 灯芯亮斑
-      const core = ctx.createRadialGradient(l.x, l.y, 0.5, l.x, l.y, Math.max(4, l.r * 0.22));
-      core.addColorStop(0, rgba(255, 252, 230, a * 1.2));
-      core.addColorStop(1, rgba(255, 240, 180, 0));
-      ctx.fillStyle = core;
-      ctx.fillRect(l.x - 5, l.y - 5, 10, 10);
-      // 地面暖光池（吊灯）
+
+      // 灯珠（2px 亮芯，替代原来 10px 过曝白球）
+      ctx.fillStyle = rgba(255, 250, 235, Math.min(0.95, a * 1.6));
+      ctx.fillRect(l.x - 1, l.y - 1, 2, 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillRect(l.x, l.y, 1, 1);
+
       if (l.kind === 'ceiling') {
-        const eg = ctx.createRadialGradient(l.x, C.FLOOR_Y + 20, 2, l.x, C.FLOOR_Y + 20, 24);
-        eg.addColorStop(0, rgba(255, 224, 150, a * 0.11));
-        eg.addColorStop(1, rgba(255, 224, 150, 0));
-        ctx.fillStyle = eg;
-        ctx.fillRect(l.x - 24, C.FLOOR_Y - 2, 48, 44);
+        // 地面/床面光池：正下方压扁椭圆（中心落在地面，覆盖家具顶与地板）
+        ctx.save();
+        ctx.translate(l.x, C.FLOOR_Y + 8);
+        ctx.scale(1, 0.5);
+        const R = l.r * 0.75;
+        const pool = ctx.createRadialGradient(0, 0, 1, 0, 0, R);
+        pool.addColorStop(0, rgba(cc[0], cc[1], cc[2], Math.min(0.5, a * 1.05)));
+        pool.addColorStop(0.5, rgba(cc[0], cc[1], cc[2], a * 0.42));
+        pool.addColorStop(0.82, rgba(cc[0], cc[1], cc[2], a * 0.14));
+        pool.addColorStop(1, rgba(cc[0], cc[1], cc[2], 0));
+        ctx.fillStyle = pool;
+        ctx.fillRect(-R, -R, R * 2, R * 2);
+        ctx.restore();
+        // 墙面柔光（小范围，避免环境雾）：照亮灯附近墙面，提供受光反馈
+        const wash = ctx.createRadialGradient(l.x, l.y, 2, l.x, l.y, l.r * 0.5);
+        wash.addColorStop(0, rgba(cc[0], cc[1], cc[2], a * 0.26));
+        wash.addColorStop(0.5, rgba(cc[0], cc[1], cc[2], a * 0.12));
+        wash.addColorStop(1, rgba(cc[0], cc[1], cc[2], 0));
+        ctx.fillStyle = wash;
+        ctx.fillRect(l.x - l.r * 0.5, l.y - l.r * 0.5, l.r, l.r);
+      } else if (l.kind === 'deskLamp') {
+        // 桌面光斑：从灯罩向桌面扩散（方向性受光，局部而非空气）
+        const g = ctx.createRadialGradient(l.x + 1, 113, 2, l.x + 1, 113, 13);
+        g.addColorStop(0, rgba(cc[0], cc[1], cc[2], Math.min(0.5, a * 1.0)));
+        g.addColorStop(0.55, rgba(cc[0], cc[1], cc[2], a * 0.36));
+        g.addColorStop(1, rgba(cc[0], cc[1], cc[2], 0));
+        ctx.fillStyle = g;
+        ctx.fillRect(l.x - 12, 102, 26, 24);
+        // 灯头附近柔和晕（小）
+        const h = ctx.createRadialGradient(l.x, l.y + 2, 1, l.x, l.y + 2, 9);
+        h.addColorStop(0, rgba(cc[0], cc[1], cc[2], a * 0.3));
+        h.addColorStop(1, rgba(cc[0], cc[1], cc[2], 0));
+        ctx.fillStyle = h;
+        ctx.fillRect(l.x - 9, l.y - 7, 18, 18);
+      } else if (l.kind === 'nightLamp') {
+        // 床头柜/床角小光池（局部暖光）
+        const g = ctx.createRadialGradient(l.x, 116, 2, l.x, 116, 13);
+        g.addColorStop(0, rgba(cc[0], cc[1], cc[2], Math.min(0.45, a * 1.0)));
+        g.addColorStop(0.55, rgba(cc[0], cc[1], cc[2], a * 0.32));
+        g.addColorStop(1, rgba(cc[0], cc[1], cc[2], 0));
+        ctx.fillStyle = g;
+        ctx.fillRect(l.x - 13, 104, 26, 24);
       }
     }
     ctx.globalCompositeOperation = 'source-over';
