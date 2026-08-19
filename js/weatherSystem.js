@@ -33,12 +33,23 @@
     return 'partly';
   }
 
+  // 按日期生成的 32 位混合散列：均匀分布、连续日期不聚集。
+  // 旧实现用线性同余 ((seed*9301+49297)%233280)，会在某些日期段连续多天落入雨区，
+  // 造成"打开页面就下雨"的观感（如 2026-08-18~21 连雨 4 天）。
+  function dayHash(seed) {
+    let h = (seed | 0) >>> 0;
+    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+    h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+
   // 无网络兜底：按日期种子，低概率雨/雪（冬季雪概率更高）
   function fallback() {
     const tp = P.Time.now();
     const seed = tp.year * 10000 + tp.month * 100 + tp.day;
-    const r1 = ((seed * 9301 + 49297) % 233280) / 233280;
-    const r2 = ((seed * 9301 + 49297 + 777) % 233280) / 233280;
+    const r1 = dayHash(seed);
+    const r2 = dayHash(seed + 0x517cc1b7);
     const s = P.Time.season(tp);
     const rainP = s.id === 'summer' ? 0.18 : C.WEATHER_FALLBACK.rainP;
     const snowP = s.id === 'winter' ? 0.22 : C.WEATHER_FALLBACK.snowP;
@@ -54,6 +65,28 @@
       wind: 5 + Math.round(r1 * 8),
       precip: COND[key].rain > 0 ? 0.5 : 0,
       source: 'fallback'
+    };
+  }
+
+  // 初始占位：API 结果到达前的确定性中性天气（永不降水）。
+  // 保证"打开页面不会默认下雨"；真实天气到达后或 API 失败后才会切换。
+  function placeholder() {
+    const tp = P.Time.now();
+    const seed = tp.year * 10000 + tp.month * 100 + tp.day;
+    const r = dayHash(seed + 0x10000);
+    let key;
+    if (r < 0.5) key = 'clear';
+    else if (r < 0.78) key = 'partly';
+    else if (r < 0.95) key = 'cloudy';
+    else key = 'fog';
+    const s = P.Time.season(tp);
+    const baseTemp = s.id === 'winter' ? 2 : s.id === 'summer' ? 28 : 18;
+    return {
+      condition: COND[key],
+      temp: baseTemp + Math.round((dayHash(seed + 0x20000) - 0.5) * 10),
+      wind: 5 + Math.round(dayHash(seed + 0x30000) * 8),
+      precip: 0,
+      source: 'placeholder'
     };
   }
 
@@ -85,7 +118,7 @@
 
   P.Weather = {
     get() {
-      if (!current) current = fallback();
+      if (!current) current = placeholder();
       return current;
     },
     isRain() {
