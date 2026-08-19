@@ -441,26 +441,30 @@
       ctx.fillRect(l.x, l.y, 1, 1);
 
       if (l.kind === 'ceiling') {
-        // 地面/床面光池：正下方压扁椭圆（中心落在地面，覆盖家具顶与地板）
+        // 1) 房间泛光：从灯向四周辐射，覆盖墙面/书架/柜顶等高处（有衰减，非雾）
+        const roomR = l.r * 1.4;
+        const g2 = ctx.createRadialGradient(l.x, l.y, 2, l.x, l.y, roomR);
+        g2.addColorStop(0, rgba(cc[0], cc[1], cc[2], a * 0.2));
+        g2.addColorStop(0.5, rgba(cc[0], cc[1], cc[2], a * 0.12));
+        g2.addColorStop(0.8, rgba(cc[0], cc[1], cc[2], a * 0.04));
+        g2.addColorStop(1, rgba(cc[0], cc[1], cc[2], 0));
+        ctx.fillStyle = g2;
+        ctx.fillRect(l.x - roomR, l.y - roomR, roomR * 2, roomR * 2);
+
+        // 2) 地面/家具/人物光池：中心在地面、向上覆盖家具与人物全身的压扁椭圆；
+        //    半径 ≥ 半房间宽，保证房间边缘的家具/宠物/人物也在光照范围内
         ctx.save();
-        ctx.translate(l.x, C.FLOOR_Y + 8);
-        ctx.scale(1, 0.5);
-        const R = l.r * 0.75;
+        ctx.translate(l.x, C.FLOOR_Y + 6);
+        ctx.scale(1, 0.8);
+        const R = l.r * 1.2;
         const pool = ctx.createRadialGradient(0, 0, 1, 0, 0, R);
-        pool.addColorStop(0, rgba(cc[0], cc[1], cc[2], Math.min(0.5, a * 1.05)));
-        pool.addColorStop(0.5, rgba(cc[0], cc[1], cc[2], a * 0.42));
-        pool.addColorStop(0.82, rgba(cc[0], cc[1], cc[2], a * 0.14));
+        pool.addColorStop(0, rgba(cc[0], cc[1], cc[2], Math.min(0.52, a * 1.1)));
+        pool.addColorStop(0.5, rgba(cc[0], cc[1], cc[2], a * 0.45));
+        pool.addColorStop(0.85, rgba(cc[0], cc[1], cc[2], a * 0.15));
         pool.addColorStop(1, rgba(cc[0], cc[1], cc[2], 0));
         ctx.fillStyle = pool;
         ctx.fillRect(-R, -R, R * 2, R * 2);
         ctx.restore();
-        // 墙面柔光（小范围，避免环境雾）：照亮灯附近墙面，提供受光反馈
-        const wash = ctx.createRadialGradient(l.x, l.y, 2, l.x, l.y, l.r * 0.5);
-        wash.addColorStop(0, rgba(cc[0], cc[1], cc[2], a * 0.26));
-        wash.addColorStop(0.5, rgba(cc[0], cc[1], cc[2], a * 0.12));
-        wash.addColorStop(1, rgba(cc[0], cc[1], cc[2], 0));
-        ctx.fillStyle = wash;
-        ctx.fillRect(l.x - l.r * 0.5, l.y - l.r * 0.5, l.r, l.r);
       } else if (l.kind === 'deskLamp') {
         // 桌面光斑：从灯罩向桌面扩散（方向性受光，局部而非空气）
         const g = ctx.createRadialGradient(l.x + 1, 113, 2, l.x + 1, 113, 13);
