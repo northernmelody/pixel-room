@@ -188,11 +188,46 @@
   }
 
   // ---- 对外数据 ----
+
+  // 每扇窗户的光照特性：供 lighting.js 生成"各不相同"的遮挡与亮度分布。
+  // bright 相对亮度；rx/ry 椭圆光晕半轴；occlude 家具遮挡区域（k 为遮挡强度）。
+  const WINDOW_LIGHT = [
+    { // 卧室：床头柜/暖气/吉他遮挡多，光偏弱
+      bright: 0.72, rx: 31, ry: 38,
+      occlude: [
+        { x: 44, y: 95, w: 14, h: 33, k: 0.55 },  // 床头柜 + 台灯
+        { x: 55, y: 104, w: 19, h: 24, k: 0.5 },   // 暖气片
+        { x: 65, y: 100, w: 13, h: 28, k: 0.45 }   // 吉他
+      ]
+    },
+    { // 工作区：台灯/桌面遮挡，光中等
+      bright: 0.95, rx: 33, ry: 38,
+      occlude: [
+        { x: 132, y: 88, w: 14, h: 22, k: 0.5 },   // 台灯
+        { x: 101, y: 102, w: 46, h: 26, k: 0.4 }   // 桌面
+      ]
+    },
+    { // 卫生间：马桶/吊柜遮挡，瓷砖反光略亮
+      bright: 1.1, rx: 32, ry: 38,
+      occlude: [
+        { x: 205, y: 90, w: 20, h: 38, k: 0.55 },  // 马桶
+        { x: 223, y: 50, w: 18, h: 28, k: 0.4 }    // 吊柜（右）
+      ]
+    },
+    { // 厨房：吊柜/台面遮挡，光中等
+      bright: 0.9, rx: 30, ry: 36,
+      occlude: [
+        { x: 280, y: 50, w: 16, h: 30, k: 0.35 },  // 吊柜（左）
+        { x: 280, y: 94, w: 42, h: 34, k: 0.45 }   // 台面/水槽
+      ]
+    }
+  ];
+
   function windows() {
     const out = [];
     for (let i = 0; i < 4; i++) {
       const fw = FURN[C.ROOM_IDS[i]].window;
-      out.push({ x: fw.x, y: fw.y, w: fw.w, h: fw.h, cx: fw.x + fw.w / 2, cy: fw.y + fw.h / 2 });
+      out.push({ x: fw.x, y: fw.y, w: fw.w, h: fw.h, cx: fw.x + fw.w / 2, cy: fw.y + fw.h / 2, glow: WINDOW_LIGHT[i] });
     }
     return out;
   }
