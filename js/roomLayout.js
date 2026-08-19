@@ -891,8 +891,8 @@
     const win = FURN[C.ROOM_IDS[roomIdx]].window;
     const x = win.x, y = win.y, w = win.w, h = win.h;
     const season = st.season.id;
-    // 天空底（动态：太阳/月亮/云）
-    P.Lighting.drawWindowBackdrop(ctx, st, x, y, w, h);
+    // 天空底（动态：太阳/月亮/云；按房间索引区分每扇窗的采光明暗）
+    P.Lighting.drawWindowBackdrop(ctx, st, x, y, w, h, roomIdx);
     // 中梃
     px(ctx, x + (w >> 1), y, 1, h, '#e8e2d2');
     px(ctx, x, y + (h >> 1), w, 1, '#e8e2d2');

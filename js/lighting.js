@@ -56,39 +56,53 @@
     return { ast: ast, day: day, tw: tw, dim: dim, ambient: ambient };
   }
 
-  // 在指定竖直区间绘制太阳/月亮（天空带与窗户共用）
-  function drawCelestial(ctx, st, x0, x1, y0, y1, alphaMul) {
+  // 在指定竖直区间绘制太阳/月亮（天空带与窗户共用）。
+  // 传入 winIdx 时为"窗模式"：光晕更小更淡、降低饱和，并按每扇窗采光微调
+  // 圆盘亮度与光晕强度/范围（卧室窗帘遮挡 → 暗/紧；卫生间磨砂 → 偏暗；厨房开阔 → 亮/广）。
+  function drawCelestial(ctx, st, x0, x1, y0, y1, alphaMul, winIdx) {
     const ast = st.ast;
     const alphaMul2 = alphaMul || 1;
+    const inWin = typeof winIdx === 'number';
+    const idx = inWin ? winIdx % 4 : -1;
+    const expo = inWin ? [0.6, 1.0, 0.75, 1.1][idx] : 1;
+    const discA = inWin ? [0.78, 1.0, 0.88, 0.95][idx] : 1;
     const wSpan = x1 - x0;
     const hSpan = y1 - y0;
     if (ast.sunElev > 0) {
       const sx = x0 + wSpan * (0.12 + ast.sunT * 0.76);
       const sy = y0 + hSpan * (1 - ast.sunElev * 0.92);
-      const r = Math.max(2, hSpan * 0.24);
-      // 光晕
-      const glow = ctx.createRadialGradient(sx, sy, 1, sx, sy, r * 3.2);
-      const ga = 0.5 * ast.sunElev * alphaMul2;
-      glow.addColorStop(0, rgba(255, 236, 170, Math.min(0.55, ga * 1.4)));
-      glow.addColorStop(1, rgba(255, 236, 170, 0));
+      const r = Math.max(2, hSpan * (inWin ? 0.15 : 0.24));
+      const glowMul = inWin ? [1.9, 2.3, 2.1, 2.4][idx] : 3.2;
+      // 光晕（窗模式：更淡、更白，降低饱和与不透明度）
+      const glow = ctx.createRadialGradient(sx, sy, 1, sx, sy, r * glowMul);
+      const ga = (inWin ? 0.26 : 0.5) * ast.sunElev * alphaMul2 * expo;
+      glow.addColorStop(0, rgba(255, 240, 205, Math.min(0.42, ga * 1.4)));
+      glow.addColorStop(1, rgba(255, 240, 205, 0));
       ctx.fillStyle = glow;
-      ctx.fillRect(sx - r * 3.2, sy - r * 3.2, r * 6.4, r * 6.4);
-      // 日轮
-      ctx.fillStyle = mix('#ffd968', '#fff0c0', Math.min(1, ast.sunElev * 1.5));
+      ctx.fillRect(sx - r * glowMul, sy - r * glowMul, r * glowMul * 2, r * glowMul * 2);
+      // 日轮（窗模式按每扇窗亮度微差，模拟不同玻璃/窗帘透光）
+      ctx.save();
+      ctx.globalAlpha = inWin ? discA : 1;
+      ctx.fillStyle = inWin ? mix('#ffe2a8', '#fff4dc', Math.min(1, ast.sunElev * 1.5))
+        : mix('#ffd968', '#fff0c0', Math.min(1, ast.sunElev * 1.5));
       ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
       ctx.fillRect(sx - r + 1, sy - r + 1, Math.max(1, r), Math.max(1, r * 0.6));
+      ctx.restore();
     } else if (ast.moonElev > 0) {
       const mx = x0 + wSpan * (0.88 - ast.moonT * 0.76);
       const my = y0 + hSpan * (1 - ast.moonElev * 0.92);
-      const r = Math.max(2, hSpan * 0.22);
-      const glow = ctx.createRadialGradient(mx, my, 1, mx, my, r * 3);
-      const ga = 0.4 * ast.moonElev * alphaMul2;
-      glow.addColorStop(0, rgba(210, 220, 255, Math.min(0.5, ga)));
+      const r = Math.max(2, hSpan * (inWin ? 0.14 : 0.22));
+      const glowMul = inWin ? [1.8, 2.2, 2.0, 2.3][idx] : 3;
+      const glow = ctx.createRadialGradient(mx, my, 1, mx, my, r * glowMul);
+      const ga = (inWin ? 0.3 : 0.4) * ast.moonElev * alphaMul2 * expo;
+      glow.addColorStop(0, rgba(210, 220, 255, Math.min(0.42, ga)));
       glow.addColorStop(1, rgba(210, 220, 255, 0));
       ctx.fillStyle = glow;
-      ctx.fillRect(mx - r * 3, my - r * 3, r * 6, r * 6);
+      ctx.fillRect(mx - r * glowMul, my - r * glowMul, r * glowMul * 2, r * glowMul * 2);
       // 月轮 + 缺口
+      ctx.save();
+      ctx.globalAlpha = inWin ? discA : 1;
       ctx.fillStyle = C.COLORS.moon;
       ctx.fillRect(mx - r, my - r, r * 2, r * 2);
       ctx.fillStyle = '#131a3a';
@@ -96,6 +110,7 @@
       ctx.fillStyle = 'rgba(180,190,220,0.5)';
       ctx.fillRect(mx - r + 1, my - r + 2, 2, 2);
       ctx.fillRect(mx + 1, my + 1, 2, 2);
+      ctx.restore();
     }
   }
 
@@ -178,8 +193,8 @@
     }
   }
 
-  // 窗户内的天空底 + 天体
-  function drawWindowBackdrop(ctx, st, x, y, w, h) {
+  // 窗户内的天空底 + 天体（winIdx 传入时：内容裁剪在玻璃范围内，天体按窗户采光微差）
+  function drawWindowBackdrop(ctx, st, x, y, w, h, winIdx) {
     const day = st.day, tw = st.tw;
     const cloudiness = st.weather.condition.cloud || 0;
     let top = mix(C.COLORS.skyNightMid, C.COLORS.skyDayMid, day);
@@ -192,19 +207,25 @@
       top = mix(top, '#4a5260', cloudiness);
       bot = mix(bot, '#7d8794', cloudiness * 0.8);
     }
+    // 统一裁剪在玻璃范围内：光晕/云不会溢出到窗框、窗台与墙面
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
     const g = ctx.createLinearGradient(0, y, 0, y + h);
     g.addColorStop(0, top);
     g.addColorStop(1, bot);
     ctx.fillStyle = g;
     ctx.fillRect(x, y, w, h);
-    // 天体（按窗口比例）
-    drawCelestial(ctx, st, x, x + w, y, y + h, 0.9);
+    // 天体（按窗口比例，窗模式：更小更淡、每扇窗明暗/范围微差）
+    drawCelestial(ctx, st, x, x + w, y, y + h, 0.9, winIdx);
     // 窗内小云
     if (cloudiness > 0.25 && st.day > 0.05) {
       const t = performance.now() / 1000;
       const cx = x + ((t * 5) % (w + 8)) - 4;
       drawCloud(ctx, Math.round(cx), y + 4, 0.55, 0.6);
     }
+    ctx.restore();
   }
 
   // ---- 窗户光斑（平行四边形投影，随太阳位置变化）----
@@ -326,7 +347,8 @@
       }
       if (a <= 0.004) continue;
 
-      // 椭圆光晕：长轴贴合窗口结构，边缘快速衰减（去除矩形色块感）
+      // 椭圆光晕：长轴贴合窗口结构，边缘快速衰减（去除矩形色块感）；
+      // 挖掉玻璃区域 → 亮光落在窗框四周，不会涂在玻璃上
       ctx.save();
       ctx.translate(cx, cy);
       ctx.scale(cfg.rx || 30, cfg.ry || 36);
@@ -336,7 +358,11 @@
       g0.addColorStop(0.72, rgba(col[0], col[1], col[2], a * 0.16));
       g0.addColorStop(1, rgba(col[0], col[1], col[2], 0));
       ctx.fillStyle = g0;
-      ctx.fillRect(-1, -1, 2, 2);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 1, 1, 0, 0, Math.PI * 2);
+      const rx = cfg.rx || 30, ry = cfg.ry || 36;
+      ctx.rect((w.x - cx) / rx, (w.y - cy) / ry, w.w / rx, w.h / ry);
+      ctx.fill('evenodd');
       ctx.restore();
 
       // 家具遮挡阴影：家具挡住窗户光 → 各窗明暗分布不同、边缘更自然
