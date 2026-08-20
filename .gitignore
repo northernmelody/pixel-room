@@ -1,1 +1,5 @@
 .vercel
+
+# 本地浏览器验证临时目录
+_tools/.agent-browser/
+_tools/.chrome-profile/

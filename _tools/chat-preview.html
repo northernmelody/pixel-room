@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat Preview · Pixel Room</title>
+<link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div id="app">
+    <div id="scene-wrap">
+      <canvas id="scene" width="1280" height="720"></canvas>
+
+      <!-- 左上：时间 -->
+      <div id="time-ui" class="ui-panel">
+        <div id="beijing-time" class="time-main">--:--:--</div>
+        <div id="local-time" class="time-sub">本地 --:--:--</div>
+        <div id="activity-line" class="time-sub">加载中…</div>
+      </div>
+
+      <!-- 右上：按钮 -->
+      <div id="top-right">
+        <button id="sound-btn" class="icon-btn" title="声音开关">🔇</button>
+        <button id="settings-btn" class="icon-btn" title="设置">⚙️</button>
+      </div>
+
+      <!-- 设置面板 -->
+      <div id="settings-panel" class="ui-panel hidden">
+        <h3>⚙️ 设置</h3>
+        <label>音量 <input type="range" id="volume" min="0" max="100" value="60"></label>
+        <label><input type="checkbox" id="opt-particles" checked> 天气粒子</label>
+        <label><input type="checkbox" id="opt-stars" checked> 星空</label>
+        <label><input type="checkbox" id="opt-anim" checked> 动画细节</label>
+        <button id="reset-save">重置存档</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 电脑屏幕放大 -->
+  <div id="computer-modal" class="hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <span id="computer-title">💻 电脑屏幕</span>
+        <button id="computer-cycle">换台</button>
+        <button id="computer-close">✕</button>
+      </div>
+      <canvas id="computer-canvas" width="800" height="500"></canvas>
+      <div id="computer-caption" class="modal-caption"></div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- 吉他弹唱歌词 -->
+  <div id="lyric-box">
+    <div id="lyric-title"></div>
+    <div id="lyric-line"></div>
+  </div>
+
+  <!-- 模块按依赖顺序加载 -->
+  <script src="../js/config.js"></script>
+  <script src="../js/timeSystem.js"></script>
+  <script src="../js/storage.js"></script>
+  <script src="../js/weatherSystem.js"></script>
+  <script src="../js/audio.js"></script>
+  <script src="../js/lighting.js"></script>
+  <script src="../js/weatherEffects.js"></script>
+  <script src="../js/roomLayout.js"></script>
+  <script src="../js/songs.js"></script>
+  <script src="../js/character.js"></script>
+  <script src="../js/cat.js"></script>
+  <script src="../js/dog.js"></script>
+  <script src="../js/renderer.js"></script>
+  <script src="../js/interaction.js"></script>
+  <script src="../js/ui.js"></script>
+  <script src="../js/main.js"></script>
+  <script>
+    // 自动打开电脑聊天屏并切到「聊天」模式（仅用于离线截图验证）。
+    // 用法: node 无依赖, 用 headless Chrome 打开本页即可:
+    //   chrome --headless=new --virtual-time-budget=9000 --screenshot=out.png http://127.0.0.1:8137/_tools/chat-preview.html?t=10:00
+    window.addEventListener('load', function () {
+      setTimeout(function () {
+        var P = window.PixelRoom;
+        var canvas = document.getElementById('scene');
+        var rect = canvas.getBoundingClientRect();
+        var comp = P.RoomLayout.hits().find(function (r) { return r.type === 'computer'; });
+        if (!comp || !P.Interaction) return;
+        // 点击电脑区域中心（点击区域左上角会因事件坐标取整而差 1 个逻辑像素）
+        var clientX = rect.left + ((comp.x + comp.w / 2) * P.Config.PIXEL) / P.Config.CANVAS_W * rect.width;
+        var clientY = rect.top + ((comp.y + comp.h / 2) * P.Config.PIXEL) / P.Config.CANVAS_H * rect.height;
+        canvas.dispatchEvent(new MouseEvent('click', { clientX: clientX, clientY: clientY, bubbles: true }));
+        // 切换到聊天
+        var guard = 0;
+        while (P.Character.screenName(P.Character.screenMode()) !== '聊天' && guard < 6) {
+          P.Interaction.cycleComputer(); guard++;
+        }
+      }, 900);
+    });
+  </script>
+</body>
+</html>

@@ -83,8 +83,15 @@
     M: [9, 13, 11, 9, 9],   // #..# / ##.# / #.## / #..# / #..#
     O: [6, 9, 9, 9, 6]      // .##. / #..# / #..# / #..# / .##.
   };
-  const CHAT_COUPLE_BG = typeof Image !== 'undefined' ? new Image() : null;
-  if (CHAT_COUPLE_BG) CHAT_COUPLE_BG.src = 'assets/chat-couple-bg.png';
+  const CHAT_BG = typeof Image !== 'undefined' ? new Image() : null;
+  if (CHAT_BG) {
+    // 图片是异步加载的；加载完成后通知放大电脑屏立即重绘，
+    // 否则首次打开聊天屏可能会永久停留在回退色块。
+    CHAT_BG.addEventListener('load', function () {
+      window.dispatchEvent(new Event('pixelroom-chat-bg-loaded'));
+    });
+    CHAT_BG.src = '/assets/chat-bg.png';
+  }
 
   const PYTHON_DEMO = [
     'from collections import deque',
@@ -1756,10 +1763,10 @@
     const top = y + 4;
     const tp = P.Time.now();
     const isQixi = tp.year === 2026 && tp.month === 8 && tp.day === 19;
-    if (CHAT_COUPLE_BG && CHAT_COUPLE_BG.complete && CHAT_COUPLE_BG.naturalWidth) {
-      const srcH = CHAT_COUPLE_BG.naturalWidth * ((h - 4) / w);
-      const sy = Math.max(0, (CHAT_COUPLE_BG.naturalHeight - srcH) / 2);
-      ctx.drawImage(CHAT_COUPLE_BG, 0, sy, CHAT_COUPLE_BG.naturalWidth, Math.min(srcH, CHAT_COUPLE_BG.naturalHeight), x, top, w, h - 4);
+    if (CHAT_BG && CHAT_BG.complete && CHAT_BG.naturalWidth) {
+      const srcH = CHAT_BG.naturalWidth * ((h - 4) / w);
+      const sy = Math.max(0, (CHAT_BG.naturalHeight - srcH) / 2);
+      ctx.drawImage(CHAT_BG, 0, sy, CHAT_BG.naturalWidth, Math.min(srcH, CHAT_BG.naturalHeight), x, top, w, h - 4);
     } else {
       px(ctx, x, top, w, h - 4, '#5f4b68');
       px(ctx, x, top + Math.floor(h * 0.55), w, Math.floor(h * 0.45), '#c56b49');
@@ -1792,10 +1799,10 @@
       { mine: true,  y: 85, w: 126, text: '我们在一起可以吗？' },
       { typing: true, y: 118, text: '对方正在输入' }
     ] : [
-      { mine: false, y: 29, w: 112, text: '今天也在写代码吗？' },
-      { mine: true,  y: 57, w: 132, text: '嗯，刚修好一个小 bug 🐛' },
-      { mine: false, y: 85, w: 126, text: '辛苦啦，晚上一起散步？' },
-      { mine: true,  y: 113, w: 118, text: '好呀！日落前见 🌇' }
+      { mine: false, y: 29, w: 124, text: '日落和日出不一样呀 🌇' },
+      { mine: true,  y: 57, w: 90,  text: '怎么不一样' },
+      { mine: false, y: 85, w: 166, text: '日落的时候是粉紫色的，日出是金黄的' },
+      { mine: true,  y: 113, w: 146, text: '那我们等着星星落下，太阳升起' }
     ];
     for (let i = 0; i < messages.length; i++) {
       const m = messages[i];
