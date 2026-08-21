@@ -27,10 +27,6 @@
     canvas.addEventListener('click', onClick);
     const cc = document.getElementById('computer-canvas');
     if (cc) compCtx = cc.getContext('2d');
-    // 聊天背景异步加载完成后，跳过节流等待并立即刷新一次。
-    window.addEventListener('pixelroom-chat-bg-loaded', function () {
-      nextComputerDrawAt = -Infinity;
-    });
     // 模态框按钮（由 UI 绑定亦可，这里统一绑定）
     const close = document.getElementById('computer-close');
     const cycle = document.getElementById('computer-cycle');

@@ -84,14 +84,7 @@
     O: [6, 9, 9, 9, 6]      // .##. / #..# / #..# / #..# / .##.
   };
   const CHAT_BG = typeof Image !== 'undefined' ? new Image() : null;
-  if (CHAT_BG) {
-    // 图片是异步加载的；加载完成后通知放大电脑屏立即重绘，
-    // 否则首次打开聊天屏可能会永久停留在回退色块。
-    CHAT_BG.addEventListener('load', function () {
-      window.dispatchEvent(new Event('pixelroom-chat-bg-loaded'));
-    });
-    CHAT_BG.src = '/assets/chat-bg.png';
-  }
+  if (CHAT_BG) CHAT_BG.src = 'assets/chat-bg.png';
 
   const PYTHON_DEMO = [
     'from collections import deque',
@@ -162,6 +155,58 @@
       ctx.fillStyle = rand() < 0.5 ? dark : light;
       ctx.fillRect(x, y, 1, 1);
     }
+  }
+
+  // ---- 视觉精致度工具 ----
+  // 5 阶色阶：基础 / 阴影 / 深阴影 / 高光 / 高光点（相邻亮度差约 12-18%）
+  function scale5(hex) {
+    return {
+      base: hex,
+      shadow: shade(hex, -0.15),
+      deep: shade(hex, -0.30),
+      hi: shade(hex, 0.16),
+      hiPt: shade(hex, 0.32)
+    };
+  }
+  // 顶部 1px 高光点（家具顶缘受光）
+  function hiTop(ctx, x, y, w, color) { px(ctx, x, y, w, 1, color); }
+  // 确定性 1px 棋盘抖动：在 (x,y,w,h) 区域按 checkerboard 铺两种颜色（phase 偏移 0/1）
+  function ditherFill(ctx, x, y, w, h, cA, cB, phase) {
+    const p = (phase || 0) & 1;
+    for (let yy = y; yy < y + h; yy++) {
+      for (let xx = x; xx < x + w; xx++) {
+        ctx.fillStyle = ((xx + yy) & 1) === p ? cA : cB;
+        ctx.fillRect(xx, yy, 1, 1);
+      }
+    }
+  }
+  // 沿某条边铺一条 1px 抖动带（用于渐变的像素抗锯齿过渡）
+  //  edge: 'top'|'bottom'|'left'|'right'；density: 0-1 抖出 cB 的比例
+  function ditherEdge(ctx, x, y, w, h, cA, cB, edge, density, phase) {
+    const p = (phase || 0) & 1;
+    const step = Math.max(1, Math.round(1 / Math.max(0.05, density)));
+    for (let yy = y; yy < y + h; yy++) {
+      for (let xx = x; xx < x + w; xx++) {
+        let on = false;
+        if (edge === 'top' || edge === 'bottom') {
+          on = ((xx + p) % step) < Math.round(density * step);
+          if (edge === 'top') on = on && (yy === y);
+          else on = on && (yy === y + h - 1);
+        } else {
+          on = ((yy + p) % step) < Math.round(density * step);
+          if (edge === 'left') on = on && (xx === x);
+          else on = on && (xx === x + w - 1);
+        }
+        if (on) { ctx.fillStyle = cB; ctx.fillRect(xx, yy, 1, 1); }
+      }
+    }
+  }
+  // 1px 外轮廓描边（家具外侧轮廓用；颜色需为比内部深 40-50% 的色调，勿用纯黑）
+  function outlineRect(ctx, x, y, w, h, color) {
+    px(ctx, x, y, w, 1, color);
+    px(ctx, x, y + h - 1, w, 1, color);
+    px(ctx, x, y, 1, h, color);
+    px(ctx, x + w - 1, y, 1, h, color);
   }
 
   // 夜间判断（用于“用户未手动开关灯前的自动开灯”）
@@ -888,12 +933,19 @@
     px(ctx, x + w + 1, y - 2, 1, h + 4, shade(curtainCol, 0.22));
     px(ctx, x - 6, y - 3, w + 12, 2, shade(curtainCol, -0.35));
 
-    // 窗框外沿（玻璃区域由动态绘制填充）
-    px(ctx, x - 2, y - 2, w + 4, 2, '#e8e2d2');
-    px(ctx, x - 2, y - 2, 2, h + 2, '#e8e2d2');
+    // 窗框外沿（玻璃区域由动态绘制填充）+ 深度阴影/高光（木质窗框）
+    px(ctx, x - 2, y - 2, w + 4, 2, '#f2ecdc');
+    px(ctx, x - 2, y - 2, 2, h + 2, '#f2ecdc');
     px(ctx, x + w, y - 2, 2, h + 2, '#e8e2d2');
-    // 窗台 + 阴影
+    px(ctx, x - 2, y - 2, 2, 1, '#ffffff');
+    px(ctx, x + w, y - 2, 2, h + 2, '#c9c0a8');
+    px(ctx, x - 2, y - 2, 2, h + 2, '#d8d0c0');
+    px(ctx, x + w, y + h, 2, 1, '#b0a890');
+    // 窗台 + 阴影（木纹）
     px(ctx, x - 3, y + h + 2, w + 6, 2, '#c9bfa8');
+    px(ctx, x - 3, y + h + 2, w + 6, 1, '#e0d6bc');
+    ctx.fillStyle = 'rgba(90,70,40,0.25)';
+    ctx.fillRect(x - 1, y + h + 3, w + 2, 1);
     px(ctx, x - 3, y + h + 4, w + 6, 1, 'rgba(0,0,0,0.22)');
 
     // 窗台小花（春夏）
@@ -994,57 +1046,73 @@
 
   function drawWardrobe(ctx, st) {
     const R = FURN.bedroom.wardrobe;
+    const ws = scale5(C.COLORS.woodMid);   // 木 5 阶
     // 地面投影
     groundShadow(ctx, R.x - 1, R.y + R.h - 1, R.w + 2, 3);
     // 柜体
-    px(ctx, R.x, R.y, R.w, R.h, C.COLORS.woodMid);
+    px(ctx, R.x, R.y, R.w, R.h, ws.base);
     // 顶面（亮 15-20%）
-    px(ctx, R.x, R.y, R.w, 2, C.COLORS.woodLight);
+    px(ctx, R.x, R.y, R.w, 2, ws.hi);
     px(ctx, R.x, R.y + 2, R.w, 1, 'rgba(255,255,255,0.14)');
+    hiTop(ctx, R.x, R.y, R.w, ws.hiPt);            // 顶缘 1px 高光点
     // 侧面阴影
-    px(ctx, R.x, R.y + 2, 1, R.h - 2, C.COLORS.woodDark);
-    px(ctx, R.x + R.w - 1, R.y + 2, 1, R.h - 2, C.COLORS.woodDark);
-    // 底座
-    px(ctx, R.x, R.y + R.h - 2, R.w, 2, C.COLORS.woodDarkest);
+    px(ctx, R.x, R.y + 2, 1, R.h - 2, ws.shadow);
+    px(ctx, R.x + R.w - 1, R.y + 2, 1, R.h - 2, ws.deep);
+    // 底座（深阴影 + 接缝）
+    px(ctx, R.x, R.y + R.h - 2, R.w, 2, ws.deep);
+    px(ctx, R.x, R.y + R.h - 4, R.w, 1, ws.shadow);
     // 柜门缝
-    px(ctx, R.x + 6, R.y + 2, 1, R.h - 4, C.COLORS.woodDarkest);
+    px(ctx, R.x + 6, R.y + 2, 1, R.h - 4, ws.deep);
     // 门板内框 + 木纹
     px(ctx, R.x + 1, R.y + 5, 4, 12, '#a08050');
     px(ctx, R.x + 8, R.y + 5, 4, 12, '#a08050');
+    px(ctx, R.x + 1, R.y + 5, 4, 1, '#c0a06a');     // 门板顶高光
+    px(ctx, R.x + 8, R.y + 5, 4, 1, '#c0a06a');
     ctx.fillStyle = 'rgba(0,0,0,0.14)';
     for (let gy = R.y + 6; gy < R.y + 16; gy += 3) { ctx.fillRect(R.x + 2, gy, 2, 1); ctx.fillRect(R.x + 9, gy, 2, 1); }
-    // 拉手
+    // 拉手（金属高光）
     px(ctx, R.x + 2, R.y + 20, 1, 2, C.COLORS.metalLight);
     px(ctx, R.x + 9, R.y + 20, 1, 2, C.COLORS.metalLight);
     px(ctx, R.x + 2, R.y + 20, 1, 1, '#ffffff');
+    px(ctx, R.x + 9, R.y + 20, 1, 1, '#ffffff');
+    // 外侧轮廓（比内部深 40-50%，非纯黑）
+    outlineRect(ctx, R.x, R.y, R.w, R.h, ws.deep);
   }
 
   function drawBookshelf(ctx, st) {
     const R = FURN.workspace.bookshelf;
+    const ws = scale5(C.COLORS.woodMid);
     groundShadow(ctx, R.x - 1, R.y + R.h - 1, R.w + 2, 3);
     // 柜体
-    px(ctx, R.x, R.y, R.w, R.h, C.COLORS.woodMid);
-    px(ctx, R.x, R.y, R.w, 2, C.COLORS.woodLight);
-    px(ctx, R.x, R.y + 2, 1, R.h - 4, C.COLORS.woodDark);
-    px(ctx, R.x + R.w - 1, R.y + 2, 1, R.h - 4, C.COLORS.woodLight);
-    px(ctx, R.x, R.y + R.h - 2, R.w, 2, C.COLORS.woodDark);
-    // 书本
-    const books = ['#c85a6a', '#4a7bd0', '#e0a84a', '#5a8f5a', '#9a6ac8'];
+    px(ctx, R.x, R.y, R.w, R.h, ws.base);
+    px(ctx, R.x, R.y, R.w, 2, ws.hi);
+    px(ctx, R.x, R.y, R.w, 1, ws.hiPt);
+    px(ctx, R.x, R.y + 2, 1, R.h - 4, ws.shadow);
+    px(ctx, R.x + R.w - 1, R.y + 2, 1, R.h - 4, ws.hi);
+    px(ctx, R.x, R.y + R.h - 2, R.w, 2, ws.deep);
+    // 书本（确定性：每本书厚度 1-3px、高度 4-6px、颜色各不相同 + 书脊标题线）
+    const books = ['#c85a6a', '#4a7bd0', '#e0a84a', '#5a8f5a', '#9a6ac8', '#c8608a', '#4ab0c8', '#c8925a'];
     for (let row = 0; row < 3; row++) {
       const shelfY = R.y + 2 + row * 9;
+      const rand = makeRand(R.x * 17 + row * 101 + 3);
       let bx = R.x + 1;
-      const cols = row === 0 ? 4 : row === 1 ? 3 : 5;
-      for (let i = 0; i < cols; i++) {
-        const bh = 5 + ((row + i) % 3);
-        const c = books[(row * 7 + i * 3) % books.length];
-        px(ctx, bx, shelfY - bh, 2, bh, c);
-        px(ctx, bx, shelfY - bh, 2, 1, shade(c, 0.35));
-        px(ctx, bx + 1, shelfY - 1, 1, 1, 'rgba(0,0,0,0.30)');
-        bx += 3;
+      let bi = 0;
+      while (bx < R.x + R.w - 2) {
+        const bw = 1 + ((rand() * 3) | 0);
+        if (bx + bw > R.x + R.w - 1) break;
+        const bh = 4 + ((rand() * 3) | 0);
+        const c = books[(row * 7 + bi * 3) % books.length];
+        px(ctx, bx, shelfY - bh, bw, bh, c);
+        px(ctx, bx, shelfY - bh, bw, 1, shade(c, 0.32));       // 书脊顶高光
+        px(ctx, bx, shelfY - bh + 2, 1, bh - 2, shade(c, -0.26)); // 书脊侧影
+        if (bw >= 2) px(ctx, bx + 1, shelfY - bh + 1, 1, 1, '#f5ead2'); // 标题线
+        px(ctx, bx, shelfY - 1, bw, 1, 'rgba(0,0,0,0.30)');    // 底部投影
+        bx += bw + 1;
+        bi++;
       }
       // 隔板
-      px(ctx, R.x, shelfY, R.w, 1, '#96683e');
-      px(ctx, R.x, shelfY, R.w, 1, '#b08050');
+      px(ctx, R.x, shelfY, R.w, 1, ws.deep);
+      px(ctx, R.x, shelfY, R.w, 1, ws.hi);
     }
     // 摆件（杯子 + 小雕像）
     px(ctx, R.x + 12, R.y + 8 - 3, 2, 3, '#e06060');
@@ -1132,39 +1200,52 @@
 
   function drawFridge(ctx, st) {
     const R = FURN.kitchen.fridge;
+    const fs = scale5('#d8dce4');   // 金属 5 阶
     groundShadow(ctx, R.x - 1, R.y + R.h - 1, R.w + 2, 3);
     // 柜体（圆角：上下两角去 1px）
-    px(ctx, R.x + 1, R.y, R.w - 2, R.h, '#d8dce4');
-    px(ctx, R.x, R.y + 1, 1, R.h - 1, '#d8dce4');
-    px(ctx, R.x + R.w - 1, R.y + 1, 1, R.h - 1, '#d8dce4');
+    px(ctx, R.x + 1, R.y, R.w - 2, R.h, fs.base);
+    px(ctx, R.x, R.y + 1, 1, R.h - 1, fs.base);
+    px(ctx, R.x + R.w - 1, R.y + 1, 1, R.h - 1, fs.base);
     // 顶面高光 + 圆角高光
-    px(ctx, R.x + 1, R.y, R.w - 2, 2, '#eef1f6');
-    px(ctx, R.x, R.y + 1, 1, 2, '#eef1f6');
-    px(ctx, R.x + R.w - 1, R.y + 1, 1, 2, '#eef1f6');
+    px(ctx, R.x + 1, R.y, R.w - 2, 2, fs.hi);
+    px(ctx, R.x, R.y + 1, 1, 2, fs.hi);
+    px(ctx, R.x + R.w - 1, R.y + 1, 1, 2, fs.hi);
+    hiTop(ctx, R.x + 1, R.y, R.w - 2, fs.hiPt);
     // 侧面阴影/高光
-    px(ctx, R.x, R.y + 3, 1, R.h - 4, '#c0c4cc');
-    px(ctx, R.x + R.w - 1, R.y + 3, 1, R.h - 4, '#e8ecf2');
-    // 门缝线
-    px(ctx, R.x + 2, R.y + (R.h >> 1) - 1, R.w - 4, 1, '#b8bcc8');
-    px(ctx, R.x + 2, R.y + (R.h >> 1), R.w - 4, 1, 'rgba(255,255,255,0.25)');
-    // 拉手
+    px(ctx, R.x, R.y + 3, 1, R.h - 4, fs.shadow);
+    px(ctx, R.x + R.w - 1, R.y + 3, 1, R.h - 4, fs.hi);
+    // 门缝线（深阴影 + 下方高光）
+    px(ctx, R.x + 2, R.y + (R.h >> 1) - 1, R.w - 4, 1, fs.deep);
+    px(ctx, R.x + 2, R.y + (R.h >> 1), R.w - 4, 1, 'rgba(255,255,255,0.30)');
+    // 拉手（金属高光 + 阴影）
     px(ctx, R.x + R.w - 4, R.y + 8, 1, 4, '#9aa0ae');
     px(ctx, R.x + R.w - 4, R.y + (R.h >> 1) + 8, 1, 4, '#9aa0ae');
-    // 磁性贴
+    px(ctx, R.x + R.w - 4, R.y + 8, 1, 1, '#ffffff');
+    px(ctx, R.x + R.w - 4, R.y + (R.h >> 1) + 8, 1, 1, '#ffffff');
+    px(ctx, R.x + R.w - 4, R.y + 11, 1, 1, '#6a7078');
+    px(ctx, R.x + R.w - 4, R.y + (R.h >> 1) + 11, 1, 1, '#6a7078');
+    // 磁性贴（多种颜色/形状）
     px(ctx, R.x + 3, R.y + 6, 2, 2, '#ff8a5a');
     px(ctx, R.x + 7, R.y + 5, 2, 2, '#5ac8ff');
+    px(ctx, R.x + 4, R.y + 12, 2, 1, '#7ad85a');
+    px(ctx, R.x + 9, R.y + 11, 2, 2, '#ffd05a');
+    px(ctx, R.x + 3, R.y + 15, 1, 1, '#c89a5a');
     // 底部
-    px(ctx, R.x + 1, R.y + R.h - 2, R.w - 2, 2, '#c4c8d0');
+    px(ctx, R.x + 1, R.y + R.h - 2, R.w - 2, 2, fs.shadow);
+    px(ctx, R.x + 1, R.y + R.h - 1, R.w - 2, 1, fs.deep);   // 底部接缝深阴影
+    // 外侧轮廓（比内部深 40-50%，非纯黑）
+    outlineRect(ctx, R.x, R.y, R.w, R.h, fs.deep);
   }
 
   function drawKitchenCabinets(ctx, st) {
     const R = FURN.kitchen.cabinets;
+    const ws = scale5(C.COLORS.woodMid);
     // 吊柜（木质）
-    px(ctx, R.x, R.y, R.w, R.h, C.COLORS.woodMid);
-    px(ctx, R.x, R.y, R.w, 1, C.COLORS.woodLight);
-    px(ctx, R.x, R.y + 1, 1, R.h - 1, C.COLORS.woodDark);
-    px(ctx, R.x + R.w - 1, R.y + 1, 1, R.h - 1, C.COLORS.woodDark);
-    px(ctx, R.x, R.y + (R.h >> 1), R.w, 1, C.COLORS.woodDarkest);
+    px(ctx, R.x, R.y, R.w, R.h, ws.base);
+    px(ctx, R.x, R.y, R.w, 1, ws.hiPt);
+    px(ctx, R.x, R.y + 1, 1, R.h - 1, ws.shadow);
+    px(ctx, R.x + R.w - 1, R.y + 1, 1, R.h - 1, ws.shadow);
+    px(ctx, R.x, R.y + (R.h >> 1), R.w, 1, ws.deep);
     // 门板 + 拉手
     px(ctx, R.x + 1, R.y + 2, R.w / 2 - 2, R.h / 2 - 2, '#c2baa8');
     px(ctx, R.x + R.w / 2, R.y + 2, R.w / 2 - 2, R.h / 2 - 2, '#c2baa8');
@@ -1180,12 +1261,14 @@
     const R = FURN.bathroom.sink;
     groundShadow(ctx, R.x - 1, R.y + 24, R.w + 2, 3);
     // 柜体
-    px(ctx, R.x, R.y + 12, R.w, 14, C.COLORS.woodMid);
-    px(ctx, R.x, R.y + 12, R.w, 1, C.COLORS.woodDark);
+    const ws = scale5(C.COLORS.woodMid);
+    px(ctx, R.x, R.y + 12, R.w, 14, ws.base);
+    px(ctx, R.x, R.y + 12, R.w, 1, ws.shadow);
     // 柜门缝 + 拉手
-    px(ctx, R.x + R.w / 2, R.y + 13, 1, 12, C.COLORS.woodDarkest);
+    px(ctx, R.x + R.w / 2, R.y + 13, 1, 12, ws.deep);
     px(ctx, R.x + R.w / 2 - 2, R.y + 17, 1, 2, C.COLORS.metalLight);
     px(ctx, R.x + R.w / 2 + 2, R.y + 17, 1, 2, C.COLORS.metalLight);
+    px(ctx, R.x, R.y + 24, R.w, 2, ws.deep);
     // 台面（顶面高光 + 前缘）
     px(ctx, R.x, R.y, R.w, 3, '#e8e8ec');
     px(ctx, R.x, R.y, R.w, 1, '#f8f8fc');
@@ -1284,27 +1367,38 @@
 
   function drawBed(ctx, st) {
     const R = FURN.bedroom;
+    const ws = scale5(C.COLORS.woodMid);   // 木 5 阶：基础/阴影/深阴影/高光/高光点
     // 地面投影
     groundShadow(ctx, R.bed.x + 1, R.bed.y + 15, R.bed.w - 2, 3);
-    // 床头板（厚度 + 顶面高光）
-    px(ctx, R.bed.x, 100, 4, 28, C.COLORS.woodMid);
-    px(ctx, R.bed.x, 100, 4, 2, C.COLORS.woodLight);
-    px(ctx, R.bed.x, 100, 1, 28, C.COLORS.woodDark);
-    px(ctx, R.bed.x + 3, 100, 1, 28, C.COLORS.woodLight);
-    px(ctx, R.bed.x + 1, 106, 1, 18, C.COLORS.woodDark);
+    // 床头板（厚度 + 顶面高光点 + 侧影）
+    px(ctx, R.bed.x, 100, 4, 28, ws.base);
+    hiTop(ctx, R.bed.x, 100, 4, ws.hi);
+    px(ctx, R.bed.x, 100, 4, 1, ws.hiPt);            // 顶缘 1px 高光点
+    px(ctx, R.bed.x, 100, 1, 28, ws.shadow);
+    px(ctx, R.bed.x + 3, 100, 1, 28, ws.hi);
+    px(ctx, R.bed.x + 1, 106, 1, 18, ws.deep);       // 板面深阴影
+    px(ctx, R.bed.x, 126, 4, 2, ws.deep);            // 床头板底部接缝深阴影
     // 床架
     px(ctx, R.bed.x, R.bed.y + 10, R.bed.w, 6, '#7a4a2c');
     px(ctx, R.bed.x, R.bed.y + 10, R.bed.w, 2, '#8f5a36');
     px(ctx, R.bed.x, R.bed.y + 10, 1, 6, '#96683e');
-    // 床垫（高度 + 顶面高光）
+    px(ctx, R.bed.x, R.bed.y + 15, R.bed.w, 1, '#4a2e1c');  // 床架下沿深阴影
+    // 床垫（高度 + 顶面高光点 + 侧影）
     px(ctx, R.bed.x, R.bed.y, R.bed.w, 9, '#f4e8d4');
     px(ctx, R.bed.x, R.bed.y, R.bed.w, 1, '#fff8ec');
+    px(ctx, R.bed.x, R.bed.y + 1, R.bed.w, 1, '#ffffff');    // 顶缘高光点
     px(ctx, R.bed.x, R.bed.y + 8, R.bed.w, 1, '#e0d8cc');
-    // 枕头（立体感）
-    px(ctx, R.pillow.x, R.pillow.y, R.pillow.w, R.pillow.h, '#ffffff');
-    px(ctx, R.pillow.x, R.pillow.y, R.pillow.w, 1, '#fffdf6');
-    px(ctx, R.pillow.x, R.pillow.y + R.pillow.h - 1, R.pillow.w, 1, '#d8d0c4');
-    px(ctx, R.pillow.x, R.pillow.y + 2, 1, 4, '#e8e2d8');
+    px(ctx, R.bed.x, R.bed.y + 7, 1, 2, '#c9bcaa');          // 左侧阴影
+    // 枕头（立体感 + 抖动边缘：底缘/右缘 1px 起伏，模拟柔软褶皱）
+    const pw = R.pillow;
+    px(ctx, pw.x, pw.y, pw.w, pw.h, '#ffffff');
+    px(ctx, pw.x, pw.y, pw.w, 1, '#fffdf6');
+    px(ctx, pw.x, pw.y + pw.h - 1, pw.w, 1, '#d8d0c4');
+    px(ctx, pw.x + 1, pw.y + pw.h, 2, 1, '#c9bfae');        // 抖动：底部外凸一点
+    px(ctx, pw.x + 5, pw.y + pw.h - 1, 1, 1, '#f4efe4');    // 抖动：底缘凹陷高光
+    px(ctx, pw.x + pw.w, pw.y + 2, 1, 3, '#e8e2d8');
+    px(ctx, pw.x, pw.y + 2, 1, 4, '#e8e2d8');
+    px(ctx, pw.x + 1, pw.y + 1, 2, 1, '#ffffff');           // 顶缘高光点
     // 被子（随状态变化：睡觉盖身 / 睡前铺好 / 白天乱糟糟）
     drawBlanketMode(ctx, R, st);
     // 床腿（前后层次）
@@ -1316,47 +1410,58 @@
   function drawBlanketMode(ctx, R, st) {
     const mode = (P.Storage.state.items || {}).blanket || 'cover';
     const b = R.blanket; // (17,112,27,8)
+    const bs = scale5('#5a8fc8');   // 被 5 阶：基础/阴影/深阴影/高光/高光点
     if (mode === 'cover') {
-      // 睡觉：平整盖在身上
-      px(ctx, b.x, b.y, b.w, b.h, '#5a8fc8');
-      px(ctx, b.x, b.y, b.w, 2, '#6fa3d8');
-      px(ctx, b.x, b.y, b.w, 1, '#7db1e0');
-      px(ctx, b.x, b.y + b.h - 1, b.w, 1, '#4a78a8');
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      // 睡觉：平整盖在身上（被面高光 + 深阴影缝线 + 褶皱线）
+      px(ctx, b.x, b.y, b.w, b.h, bs.base);
+      px(ctx, b.x, b.y, b.w, 2, bs.hi);
+      px(ctx, b.x, b.y, b.w, 1, bs.hiPt);
+      px(ctx, b.x, b.y + b.h - 1, b.w, 1, bs.deep);
+      // 被子褶皱线：高光-阴影成对，形成柔和折痕
+      ctx.fillStyle = 'rgba(255,255,255,0.16)';
       for (let i = 0; i < 4; i++) ctx.fillRect(b.x + 4 + i * 6, b.y + 3, 3, 2);
-      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillStyle = bs.deep;
       for (let i = 0; i < 4; i++) ctx.fillRect(b.x + 5 + i * 6, b.y + 5, 1, b.h - 5);
+      // 被角深阴影接缝
+      px(ctx, b.x, b.y + b.h - 2, 3, 1, bs.deep);
+      px(ctx, b.x + b.w - 3, b.y + b.h - 2, 3, 1, bs.deep);
     } else if (mode === 'made') {
       // 睡前铺好：整齐叠在床尾
-      px(ctx, 31, 112, 13, 8, '#5a8fc8');
-      px(ctx, 31, 112, 13, 1, '#7db1e0');
-      px(ctx, 31, 116, 13, 1, '#4a78a8');
-      px(ctx, 31, 119, 13, 1, '#4a78a8');
-      px(ctx, 31, 112, 1, 8, '#4a78a8');
-      px(ctx, 43, 112, 1, 8, '#6fa3d8');
+      px(ctx, 31, 112, 13, 8, bs.base);
+      px(ctx, 31, 112, 13, 1, bs.hiPt);
+      px(ctx, 31, 116, 13, 1, bs.deep);
+      px(ctx, 31, 119, 13, 1, bs.deep);
+      px(ctx, 31, 112, 1, 8, bs.deep);
+      px(ctx, 43, 112, 1, 8, bs.hi);
+      // 叠层缝线（横折）
+      px(ctx, 31, 115, 13, 1, bs.shadow);
     } else {
       // 白天：乱糟糟堆在床尾 + 歪斜 + 垂落
-      px(ctx, 27, 113, 17, 7, '#5a8fc8');
-      px(ctx, 29, 111, 11, 4, '#6fa3d8');
-      px(ctx, 35, 112, 9, 5, '#5584b8');
-      px(ctx, 39, 117, 5, 3, '#6fa3d8');
-      px(ctx, 30, 115, 14, 1, '#4a78a8');
-      px(ctx, 33, 113, 1, 7, '#4a78a8');
-      px(ctx, 37, 114, 1, 6, '#4a78a8');
-      px(ctx, 41, 116, 1, 4, '#4a78a8');
+      px(ctx, 27, 113, 17, 7, bs.base);
+      px(ctx, 29, 111, 11, 4, bs.hi);
+      px(ctx, 35, 112, 9, 5, bs.shadow);
+      px(ctx, 39, 117, 5, 3, bs.hi);
+      px(ctx, 30, 115, 14, 1, bs.deep);
+      px(ctx, 33, 113, 1, 7, bs.deep);
+      px(ctx, 37, 114, 1, 6, bs.deep);
+      px(ctx, 41, 116, 1, 4, bs.deep);
+      // 垂落边高光点
+      px(ctx, 39, 118, 1, 1, bs.hiPt);
     }
   }
 
   function drawNightstand(ctx, st) {
     const R = FURN.bedroom;
+    const ws = scale5(C.COLORS.woodMid);
     // 床头柜
     groundShadow(ctx, R.nightstand.x - 1, R.nightstand.y + 11, R.nightstand.w + 2, 2);
-    px(ctx, R.nightstand.x, R.nightstand.y, R.nightstand.w, 2, C.COLORS.woodLight);
-    px(ctx, R.nightstand.x, R.nightstand.y + 2, R.nightstand.w, 7, C.COLORS.woodMid);
-    px(ctx, R.nightstand.x, R.nightstand.y + 2, 1, 7, C.COLORS.woodDark);
-    px(ctx, R.nightstand.x + 2, R.nightstand.y + 6, R.nightstand.w - 4, 1, C.COLORS.woodDarkest);
+    px(ctx, R.nightstand.x, R.nightstand.y, R.nightstand.w, 2, ws.hi);
+    hiTop(ctx, R.nightstand.x, R.nightstand.y, R.nightstand.w, ws.hiPt);
+    px(ctx, R.nightstand.x, R.nightstand.y + 2, R.nightstand.w, 7, ws.base);
+    px(ctx, R.nightstand.x, R.nightstand.y + 2, 1, 7, ws.shadow);
+    px(ctx, R.nightstand.x + 2, R.nightstand.y + 6, R.nightstand.w - 4, 1, ws.deep);
     px(ctx, R.nightstand.x + R.nightstand.w - 2, R.nightstand.y + 6, 1, 1, C.COLORS.metalLight);
-    px(ctx, R.nightstand.x, R.nightstand.y + 9, R.nightstand.w, 3, C.COLORS.woodDark);
+    px(ctx, R.nightstand.x, R.nightstand.y + 9, R.nightstand.w, 3, ws.shadow);
     // 台灯（立体感）
     const lampOn = lampOnF('nightLamp');
     px(ctx, R.nightLamp.x + 1, R.nightLamp.y + 11, 2, 3, '#4a4a5a');
@@ -1369,23 +1474,41 @@
 
   function drawDeskGroup(ctx, st) {
     const R = FURN.workspace;
+    const ws = scale5(C.COLORS.woodMid);
     // 桌面 + 腿（前后层次）
     groundShadow(ctx, R.desk.x - 1, R.desk.y + 18, R.desk.w + 2, 3);
-    px(ctx, R.desk.x, R.desk.y, R.desk.w, 2, C.COLORS.woodLight);
-    px(ctx, R.desk.x, R.desk.y + 2, R.desk.w, 2, C.COLORS.woodMid);
+    px(ctx, R.desk.x, R.desk.y, R.desk.w, 2, ws.hi);
+    hiTop(ctx, R.desk.x, R.desk.y, R.desk.w, ws.hiPt);
+    px(ctx, R.desk.x, R.desk.y + 2, R.desk.w, 2, ws.base);
     px(ctx, R.desk.x, R.desk.y + 4, R.desk.w, 1, 'rgba(0,0,0,0.22)');
+    // 桌面木纹（确定性短线）+ 磨损（浅划痕）
+    ctx.fillStyle = 'rgba(70,42,20,0.28)';
+    const gr = makeRand(R.desk.x * 31 + R.desk.y * 7 + 5);
+    for (let i = 0; i < 7; i++) {
+      const gx = R.desk.x + 2 + ((gr() * (R.desk.w - 8)) | 0);
+      ctx.fillRect(gx, R.desk.y + 1 + ((gr() * 2) | 0), 3 + ((gr() * 3) | 0), 1);
+    }
+    ctx.fillStyle = 'rgba(255,240,210,0.16)';
+    for (let i = 0; i < 3; i++) {
+      const gx = R.desk.x + 4 + ((gr() * (R.desk.w - 10)) | 0);
+      ctx.fillRect(gx, R.desk.y + 2, 4 + ((gr() * 3) | 0), 1);
+    }
     // 后腿（暗）
     px(ctx, R.desk.x + 2, R.desk.y + 5, 3, 15, C.COLORS.woodDarkest);
     px(ctx, R.desk.x + R.desk.w - 5, R.desk.y + 5, 3, 15, C.COLORS.woodDarkest);
     // 前腿（亮，带高光）
-    px(ctx, R.desk.x + 1, R.desk.y + 5, 3, 15, C.COLORS.woodMid);
-    px(ctx, R.desk.x + R.desk.w - 4, R.desk.y + 5, 3, 15, C.COLORS.woodMid);
-    px(ctx, R.desk.x + 1, R.desk.y + 5, 1, 15, C.COLORS.woodLight);
-    px(ctx, R.desk.x + R.desk.w - 4, R.desk.y + 5, 1, 15, C.COLORS.woodLight);
-    // 抽屉线
-    px(ctx, R.desk.x + 1, R.desk.y + 8, 7, 1, C.COLORS.woodDark);
+    px(ctx, R.desk.x + 1, R.desk.y + 5, 3, 15, ws.base);
+    px(ctx, R.desk.x + R.desk.w - 4, R.desk.y + 5, 3, 15, ws.base);
+    px(ctx, R.desk.x + 1, R.desk.y + 5, 1, 15, ws.hi);
+    px(ctx, R.desk.x + R.desk.w - 4, R.desk.y + 5, 1, 15, ws.hi);
+    px(ctx, R.desk.x + 1, R.desk.y + 19, 3, 1, ws.deep);   // 前腿底部深阴影
+    px(ctx, R.desk.x + R.desk.w - 4, R.desk.y + 19, 3, 1, ws.deep);
+    // 抽屉线 + 拉手
+    px(ctx, R.desk.x + 1, R.desk.y + 8, 7, 1, ws.deep);
+    px(ctx, R.desk.x + 3, R.desk.y + 9, 2, 1, C.COLORS.metalLight);
     // 便签
     px(ctx, R.desk.x + 2, R.desk.y - 2, 10, 2, '#e8d8b0');
+    px(ctx, R.desk.x + 2, R.desk.y - 2, 10, 1, '#f4ead0');
     px(ctx, R.desk.x + 3, R.desk.y - 1, 6, 1, '#c8b890');
     // 显示器外壳（静态部分：边框/支架；屏幕内容动态）
     drawMonitorShell(ctx, st);
@@ -1455,40 +1578,51 @@
 
   function drawChair(ctx, st) {
     const R = FURN.workspace.chair;
+    const ws = scale5(C.COLORS.woodMid);
     groundShadow(ctx, R.x - 1, R.y + 11, R.w + 1, 2);
-    // 座面（顶面高光）
-    px(ctx, R.x, R.y + 3, R.w - 4, 2, C.COLORS.woodLight);
-    px(ctx, R.x, R.y + 5, R.w - 4, 3, C.COLORS.woodMid);
+    // 座面（顶面高光点）
+    px(ctx, R.x, R.y + 3, R.w - 4, 2, ws.hi);
+    hiTop(ctx, R.x, R.y + 3, R.w - 4, ws.hiPt);
+    px(ctx, R.x, R.y + 5, R.w - 4, 3, ws.base);
     px(ctx, R.x, R.y + 3, R.w - 4, 1, '#b08050');
     // 靠背
-    px(ctx, R.x + R.w - 4, R.y, 4, R.h - 6, C.COLORS.woodMid);
-    px(ctx, R.x + R.w - 4, R.y, 4, 1, C.COLORS.woodLight);
-    px(ctx, R.x + R.w - 4, R.y + 1, 1, R.h - 7, C.COLORS.woodDark);
-    px(ctx, R.x + R.w - 2, R.y + 1, 1, R.h - 7, C.COLORS.woodLight);
+    px(ctx, R.x + R.w - 4, R.y, 4, R.h - 6, ws.base);
+    px(ctx, R.x + R.w - 4, R.y, 4, 1, ws.hiPt);
+    px(ctx, R.x + R.w - 4, R.y + 1, 1, R.h - 7, ws.shadow);
+    px(ctx, R.x + R.w - 2, R.y + 1, 1, R.h - 7, ws.hi);
     // 腿
-    px(ctx, R.x + 1, R.y + 8, 2, 4, C.COLORS.woodDark);
-    px(ctx, R.x + 7, R.y + 8, 2, 4, C.COLORS.woodDark);
-    px(ctx, R.x + 1, R.y + 8, 1, 4, C.COLORS.woodDarkest);
-    px(ctx, R.x + 7, R.y + 8, 1, 4, C.COLORS.woodDarkest);
+    px(ctx, R.x + 1, R.y + 8, 2, 4, ws.shadow);
+    px(ctx, R.x + 7, R.y + 8, 2, 4, ws.shadow);
+    px(ctx, R.x + 1, R.y + 8, 1, 4, ws.deep);
+    px(ctx, R.x + 7, R.y + 8, 1, 4, ws.deep);
   }
 
   function drawTableGroup(ctx, st) {
     const R = FURN.kitchen;
-    // 餐桌
+    const ws = scale5(C.COLORS.woodMid);
+    // 餐桌（顶面高光点 + 木纹 + 腿深阴影）
     groundShadow(ctx, R.table.x - 1, R.table.y + 16, R.table.w + 2, 2);
-    px(ctx, R.table.x, R.table.y, R.table.w, 2, C.COLORS.woodLight);
-    px(ctx, R.table.x, R.table.y + 2, R.table.w, 2, C.COLORS.woodMid);
+    px(ctx, R.table.x, R.table.y, R.table.w, 2, ws.hi);
+    hiTop(ctx, R.table.x, R.table.y, R.table.w, ws.hiPt);
+    px(ctx, R.table.x, R.table.y + 2, R.table.w, 2, ws.base);
     px(ctx, R.table.x, R.table.y + 4, R.table.w, 1, 'rgba(0,0,0,0.22)');
-    px(ctx, R.table.x + 2, R.table.y + 5, 2, 13, C.COLORS.woodDark);
-    px(ctx, R.table.x + R.table.w - 4, R.table.y + 5, 2, 13, C.COLORS.woodDark);
-    px(ctx, R.table.x + 2, R.table.y + 5, 1, 13, C.COLORS.woodMid);
+    ctx.fillStyle = 'rgba(90,60,30,0.25)';
+    ctx.fillRect(R.table.x + 3, R.table.y + 2, 6, 1);
+    ctx.fillRect(R.table.x + 12, R.table.y + 2, 5, 1);
+    px(ctx, R.table.x + 2, R.table.y + 5, 2, 13, ws.shadow);
+    px(ctx, R.table.x + R.table.w - 4, R.table.y + 5, 2, 13, ws.shadow);
+    px(ctx, R.table.x + 2, R.table.y + 5, 1, 13, ws.base);
+    px(ctx, R.table.x + 2, R.table.y + 17, 2, 1, ws.deep);
+    px(ctx, R.table.x + R.table.w - 4, R.table.y + 17, 2, 1, ws.deep);
     // 凳子
     groundShadow(ctx, R.stoolA.x - 1, R.stoolA.y + 11, R.stoolA.w + 2, 2);
-    px(ctx, R.stoolA.x, R.stoolA.y, R.stoolA.w, 2, C.COLORS.woodLight);
-    px(ctx, R.stoolA.x + 1, R.stoolA.y + 2, 2, 10, C.COLORS.woodDark);
+    px(ctx, R.stoolA.x, R.stoolA.y, R.stoolA.w, 2, ws.hi);
+    hiTop(ctx, R.stoolA.x, R.stoolA.y, R.stoolA.w, ws.hiPt);
+    px(ctx, R.stoolA.x + 1, R.stoolA.y + 2, 2, 10, ws.shadow);
     groundShadow(ctx, R.stoolB.x - 1, R.stoolB.y + 11, R.stoolB.w + 2, 2);
-    px(ctx, R.stoolB.x, R.stoolB.y, R.stoolB.w, 2, C.COLORS.woodLight);
-    px(ctx, R.stoolB.x + 1, R.stoolB.y + 2, 2, 10, C.COLORS.woodDark);
+    px(ctx, R.stoolB.x, R.stoolB.y, R.stoolB.w, 2, ws.hi);
+    hiTop(ctx, R.stoolB.x, R.stoolB.y, R.stoolB.w, ws.hiPt);
+    px(ctx, R.stoolB.x + 1, R.stoolB.y + 2, 2, 10, ws.shadow);
     // 餐盘（静态底），食物与蒸汽动态绘制
     px(ctx, R.meal.x, R.meal.y + 2, R.meal.w + 2, 2, '#e8e8ec');
     px(ctx, R.meal.x, R.meal.y + 2, R.meal.w + 2, 1, '#f8f8fc');

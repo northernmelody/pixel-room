@@ -509,7 +509,7 @@
   // ============================================================
   // 绘制
   // ============================================================
-  function drawCat(ctx, x, y, direction, palette, pose) {
+  function drawCat(ctx, x, y, direction, palette, pose, t) {
     ctx.globalAlpha = 1;  // 关键：重置透明度
     const pal = palette;
     const squash = pose === 'land';
@@ -517,34 +517,42 @@
     const pet1 = pose === 'pet' && cat.petLevel === 1;
     const pet4 = pose === 'pet' && cat.petLevel === 4;
     const flee = pose === 'flee' || pose === 'walkaway';
+    const moving = pose === 'wander' || pose === 'flee' || pose === 'walkaway' || pose === 'crawlout' || pose === 'play';
     const bodyH = squash ? 9 : 10;
+    // 3 帧呼吸（静止时身体/头轻起伏）+ 4 帧行走起伏（帧切换约 125ms）
+    const f = Math.floor(t * 8) % 4;
+    const breathe = (pose === 'idle' || pose === 'sleep' || pose === 'happy' || pose === 'pet') ? ((Math.floor(t * 2.5) % 3) === 2 ? 1 : 0) : 0;
+    const walkBob = moving ? (f === 1 || f === 3 ? 1 : 0) : 0;
+    const bob = breathe + walkBob;
+    // 4 帧尾巴摆动（确定性）
+    const tailY = [1, 0, 2, 1][f];
 
-    // 轮廓
+    // 轮廓（随行走起伏）
     ctx.fillStyle = pal.dark;
-    ctx.fillRect(Math.floor(x - 1), Math.floor(y - 1), 18, bodyH + 1);
+    ctx.fillRect(Math.floor(x - 1), Math.floor(y - 1 - bob), 18, bodyH + 1);
 
     // 身体
     ctx.fillStyle = pal.body;
-    ctx.fillRect(Math.floor(x), Math.floor(y), 16, bodyH);
+    ctx.fillRect(Math.floor(x), Math.floor(y - bob), 16, bodyH);
 
     // 肚皮
     ctx.fillStyle = pal.belly;
-    ctx.fillRect(Math.floor(x + 4), Math.floor(y + 6), 8, bodyH - 6);
+    ctx.fillRect(Math.floor(x + 4), Math.floor(y - bob + 6), 8, bodyH - 6);
 
     // 条纹
     ctx.fillStyle = pal.stripe;
-    ctx.fillRect(Math.floor(x + 2), Math.floor(y + 1), 2, 2);
-    ctx.fillRect(Math.floor(x + 7), Math.floor(y), 2, 2);
-    ctx.fillRect(Math.floor(x + 12), Math.floor(y + 1), 2, 2);
+    ctx.fillRect(Math.floor(x + 2), Math.floor(y - bob + 1), 2, 2);
+    ctx.fillRect(Math.floor(x + 7), Math.floor(y - bob), 2, 2);
+    ctx.fillRect(Math.floor(x + 12), Math.floor(y - bob + 1), 2, 2);
 
-    // 尾巴（身体左侧后方）
+    // 尾巴（身体左侧后方，4 帧摆动）
     ctx.fillStyle = pal.body;
-    ctx.fillRect(Math.floor(x - 3), Math.floor(y + 1), 3, 2);
+    ctx.fillRect(Math.floor(x - 3), Math.floor(y + tailY), 3, 2);
     ctx.fillStyle = pal.dark;
-    ctx.fillRect(Math.floor(x - 3), Math.floor(y + 1), 1, 1);
+    ctx.fillRect(Math.floor(x - 3), Math.floor(y + tailY), 1, 1);
 
-    // 头部（eat 低头 / pet1 抬头）
-    const headY = eat ? y - 2 : (pet1 ? y - 5 : y - 4);
+    // 头部（eat 低头 / pet1 抬头；呼吸时头部上浮）
+    const headY = (eat ? y - 2 : (pet1 ? y - 5 : y - 4)) - bob;
     ctx.fillStyle = pal.body;
     ctx.fillRect(Math.floor(x + 8), Math.floor(headY), 8, 8);
     // 头部轮廓
@@ -691,10 +699,10 @@
       ctx.translate(x, 0);
       ctx.scale(-1, 1);
       ctx.translate(-x, 0);
-      drawCat(ctx, x - 7, drawY, d, pal, pose);
+      drawCat(ctx, x - 7, drawY, d, pal, pose, t);
       ctx.restore();
     } else {
-      drawCat(ctx, x - 7, drawY, d, pal, pose);
+      drawCat(ctx, x - 7, drawY, d, pal, pose, t);
     }
 
     // 摸猫 2/3 阶段爱心

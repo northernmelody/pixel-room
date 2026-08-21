@@ -10,6 +10,7 @@
   const SKIN = '#f5e6c8';          // 暖黄偏白
   const SKIN_SHADOW = '#d9c8a0';   // 阴影
   const SKIN_HIGHLIGHT = '#fdf8e8'; // 高光
+  const SKIN_OUTLINE = '#87796a';  // 头轮廓：比内部皮肤深约 45%（非纯黑）
   const HAIR = '#33261c';
   const HAIR2 = '#4a3a28';
 
@@ -768,8 +769,8 @@
   function drawHead(ctx, x, y, direction) {
     ctx.globalAlpha = 1;  // 关键：重置透明度
 
-    // 轮廓（比头部大 2px，实色深棕）
-    ctx.fillStyle = '#3d2b1f';
+    // 轮廓（比头部大 2px，用比内部深约 45% 的暖色，非纯黑）
+    ctx.fillStyle = SKIN_OUTLINE;
     ctx.fillRect(Math.floor(x - 1), Math.floor(y - 1), 14, 14);
 
     // 内部填充（实色，不透明）
@@ -784,9 +785,9 @@
     ctx.fillStyle = SKIN_HIGHLIGHT;
     ctx.fillRect(Math.floor(x + 2), Math.floor(y + 1), 2, 1);
 
-    // 头发（覆盖头顶，实色）
+    // 头发（覆盖头顶，实色；向上扩 1px 盖住轮廓顶边）
     ctx.fillStyle = HAIR;
-    ctx.fillRect(Math.floor(x), Math.floor(y), 12, 4);
+    ctx.fillRect(Math.floor(x), Math.floor(y - 1), 12, 5);
     // 刘海细节
     ctx.fillStyle = HAIR2;
     ctx.fillRect(Math.floor(x + 1), Math.floor(y + 3), 2, 1);
