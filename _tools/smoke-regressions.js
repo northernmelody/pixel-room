@@ -120,9 +120,11 @@ function storageState(overrides) {
   P.Audio = { ui() {} }; P.UI = { toast() {} };
   load(ctx, 'js/interaction.js');
   P.Interaction.init(canvas);
-  clickHandler({ clientX: 100 * 4, clientY: 50 * 4 });
+  const entityShift = P.Config.FLOOR_Y - P.Config.LEGACY_FLOOR_Y;
+  const displayedSupportY = 56 + entityShift;
+  clickHandler({ clientX: 100 * 4, clientY: (displayedSupportY - 6) * 4 });
   assert(pets === 1, 'cat should be clickable at its elevated support surface');
-  clickHandler({ clientX: 100 * 4, clientY: 124 * 4 });
+  clickHandler({ clientX: 100 * 4, clientY: (P.Config.FLOOR_Y - 4) * 4 });
   assert(pets === 1, 'empty floor below an elevated cat should not trigger pet');
 }
 

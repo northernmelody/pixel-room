@@ -39,6 +39,7 @@ function load(file) {
 
 load('js/config.js');
 const P = sandbox.window.PixelRoom;
+const X = P.Config.mapLegacyX.bind(P.Config);
 
 // ---- 可控时间 stub ----
 let curHour = 10.0; // 工作时段
@@ -137,15 +138,15 @@ assert(songLyrics[0] && songLyrics[0].title === riverSong.title, 'lyric title fo
 assert(songLyrics[0] && songLyrics[0].line === riverSong.lyrics[0], 'first line follows song data, got ' + (songLyrics[0] || {}).line);
 assert(songLyrics[riverSong.lyrics.length - 1] && songLyrics[riverSong.lyrics.length - 1].line === riverSong.lyrics[riverSong.lyrics.length - 1], 'last line follows song data, got ' + (songLyrics[riverSong.lyrics.length - 1] || {}).line);
 assert(lyricCalls.length === 8 && lyricCalls[7].hide, 'hideLyric called at end');
-// ---- 6. 结束后重新同步回工作（x=147） ----
+// ---- 6. 结束后重新同步回工作（新版布局映射坐标） ----
 dbg = Char._debug();
 assert(dbg.activity === '__guitar_done', 'activity sentinel set after song, got ' + dbg.activity);
 for (let i = 0; i < 2000 && Char._debug().activity !== 'work'; i++) { Char.update(0.05); }
 dbg = Char._debug();
 assert(dbg.activity === 'work', 're-synced back to work, got ' + dbg.activity);
-for (let i = 0; i < 4000 && Math.abs(Char._debug().x - 147) > 1; i++) { Char.update(0.05); }
+for (let i = 0; i < 4000 && Math.abs(Char._debug().x - X(147)) >= 1; i++) { Char.update(0.05); }
 dbg = Char._debug();
-assert(Math.abs(dbg.x - 147) < 1, 'character walked back to work x=147, got x=' + dbg.x);
+assert(Math.abs(dbg.x - X(147)) < 1, 'character walked back to mapped work x=' + X(147) + ', got x=' + dbg.x);
 
 // ---- 7. 睡在床上拒绝 ----
 curHour = 2.0;
@@ -183,7 +184,7 @@ dbg = Char._debug();
 assert(dbg.activity === 'leisure', 'after leisure song -> still leisure, got ' + dbg.activity);
 assert(dbg.leisureAct === leisureBefore, 'leisure activity restored (' + leisureBefore + '), got ' + dbg.leisureAct);
 // 走回休闲位
-const spot = { game: 147, read: 27, exercise: 96, play_cat: 99, look_out: 63, phone: 27 }[leisureBefore];
+const spot = { game: X(147), read: X(27), exercise: X(96), play_cat: X(99), look_out: X(61), phone: X(27) }[leisureBefore];
 for (let i = 0; i < 4000 && Math.abs(Char._debug().x - spot) > 0.5; i++) { Char.update(0.05); }
 dbg = Char._debug();
 assert(Math.abs(dbg.x - spot) < 1, 'character walked back to leisure spot x=' + spot + ', got x=' + dbg.x);
@@ -204,5 +205,5 @@ if (failed.length) {
   process.exit(1);
 }
 console.log('SMOKE OK: go→pick→carry→sit→sing(7 lines,' + firstSongDur.toFixed(1) + 's,notes=' + maxNotesSeen + ')→put→back→place(taken=false)→done;');
-console.log('  re-sync to work x=147; sleep refused; shower OK; busy refused; leisure restore=' + leisureBefore + '; no-repeat A=' + songA + ' B=' + songB);
+console.log('  re-sync to mapped work x=' + X(147) + '; sleep refused; shower OK; busy refused; leisure restore=' + leisureBefore + '; no-repeat A=' + songA + ' B=' + songB);
 console.log('final debug:', JSON.stringify(Char._debug()));

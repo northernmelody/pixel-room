@@ -45,6 +45,7 @@ function load(file) {
 
 load('js/config.js');
 const P = sandbox.window.PixelRoom;
+const X = P.Config.mapLegacyX.bind(P.Config);
 
 // ---- 可控时间 stub ----
 let curHour = 7.6; // 洗漱中
@@ -104,20 +105,20 @@ for (let i = 0; i < 120000 && !atTable; i++) {
     }
   }
   if (dbg.fridgePhase === 'done') doneFridge = true;
-  if (dbg.pose === 'fridge' && Math.abs(dbg.x - 262) < 1) arrivedFridge = true;
-  if (dbg.pose === 'eat' && Math.abs(dbg.x - 248) < 1) {
+  if (dbg.pose === 'fridge' && Math.abs(dbg.x - X(262)) < 1) arrivedFridge = true;
+  if (dbg.pose === 'eat' && Math.abs(dbg.x - X(248)) < 1) {
     atTable = true;
     mealFood = dbg.mealFood;
   }
   if (t > 90) break;
 }
 dbg = Char._debug();
-assert(arrivedFridge, 'character should reach fridge x=262 (x=' + dbg.x + ' pose=' + dbg.pose + ' phase=' + dbg.fridgePhase + ')');
+assert(arrivedFridge, 'character should reach mapped fridge x=' + X(262) + ' (x=' + dbg.x + ' pose=' + dbg.pose + ' phase=' + dbg.fridgePhase + ')');
 assert(opened, 'fridgePhase should enter open (phase=' + dbg.fridgePhase + ')');
 assert(doorOpenSeen > 0, 'fridgeOpen() should report open during phase open');
 assert(doorOpenP === 'full' || doorOpenP === 'partial', 'fridgeOpen().p should reach partial/full (last=' + doorOpenP + ')');
 assert(doneFridge, 'fridgePhase should reach done');
-assert(atTable, 'character should arrive at table x=248 to eat');
+assert(atTable, 'character should arrive at mapped table x=' + X(248) + ' to eat');
 assert(!!mealFood, 'mealFood should be picked at table (mealFood=' + mealFood + ')');
 
 // ---- 直接从餐时初始化（页面在早餐时段打开） ----

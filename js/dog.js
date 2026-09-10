@@ -7,8 +7,10 @@
   'use strict';
   const P = window.PixelRoom; if (!P) return;
   const C = P.Config;
-  const FLOOR = C.FLOOR_Y;
-  const W = C.LOGICAL_W;
+  const FLOOR = C.LEGACY_FLOOR_Y || C.FLOOR_Y;
+  const X = C.mapLegacyX.bind(C);
+  // 保持宠物原有活动范围；最右侧新增门区暂不纳入宠物漫游逻辑。
+  const W = Math.min(C.LOGICAL_W, 320);
 
   // 锁定棕色腊肠狗配色（单一配色）
   const PALETTES = [
@@ -16,9 +18,9 @@
   ];
 
   // 狗窝中心 x=292（窝静态绘制于 286,124,12,4）；狗粮碗静态绘制于 300,124,5,3
-  const DOG_BED_X = 292;
-  const DOG_BOWL_X = 288;   // 进食站位（面朝右，嘴正好到碗边）
-  const BOWL_X = 300;       // 狗粮碗静态 x（进食时重绘在狗身前）
+  const DOG_BED_X = X(292);
+  const DOG_BOWL_X = X(288); // 进食站位（面朝右，嘴正好到碗边）
+  const BOWL_X = X(300);     // 狗粮碗静态 x（进食时重绘在狗身前）
 
   // ---- 边界：腊肠狗身体半宽 19（尾巴 x-15 ~ 嘴/声波 x+26），
   // 左右各留 21 保证整体完整可见、不溢出房间 ----
@@ -46,7 +48,7 @@
     const saved = P.Storage.state;
     const seed = (saved.dogSeed !== undefined && saved.dogSeed !== null) ? saved.dogSeed : 0;
     // 每次打开页面随机起始位置（房间常见落脚点，避免出生在家具里；在安全边界内）
-    const spots = [24 + Math.random() * 30, 120 + Math.random() * 30, 250 + Math.random() * 30];
+    const spots = [X(24) + Math.random() * 30, X(120) + Math.random() * 30, X(250) + Math.random() * 30];
     const sx = Math.max(DOG_BOUND_MIN, Math.min(DOG_BOUND_MAX, spots[(Math.random() * spots.length) | 0]));
     dog = {
       x: sx, dir: Math.random() < 0.5 ? -1 : 1,
@@ -68,9 +70,9 @@
     const p = P.Character.pos();
     const spots = [
       p.x + (Math.random() * 44 - 22),
-      24 + Math.random() * 30,
-      120 + Math.random() * 30,
-      250 + Math.random() * 30
+      X(24) + Math.random() * 30,
+      X(120) + Math.random() * 30,
+      X(250) + Math.random() * 30
     ];
     // 随机目标点限制在安全范围 [21, W-21]
     return Math.max(DOG_BOUND_MIN, Math.min(DOG_BOUND_MAX, spots[(Math.random() * spots.length) | 0]));

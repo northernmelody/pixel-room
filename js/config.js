@@ -23,26 +23,41 @@
 
   P.Config = {
     // ---- 渲染 ----
-    CANVAS_W: 1280,           // 画布物理宽
-    CANVAS_H: 720,            // 画布物理高
+    CANVAS_W: 1376,           // 画布物理宽，右侧新增门区
+    CANVAS_H: 544,            // 画布物理高：紧凑横向剖面
     PIXEL: 4,                 // 一个逻辑像素 = 4 显示像素
-    LOGICAL_W: 320,           // 逻辑宽
-    LOGICAL_H: 180,           // 逻辑高
+    LOGICAL_W: 344,           // 原房间坐标保留，右侧扩展 24px
+    LOGICAL_H: 136,           // 逻辑高
 
     // ---- 时区 ----
     TIMEZONE_OFFSET_MIN: 480, // 东八区 UTC+8
 
     // ---- 房间 ----
-    ROOM_WIDTH: 80,           // 每间房逻辑宽
+    ROOM_WIDTH: 80,           // 旧版行为坐标单元（状态机兼容用，不再代表显示宽度）
     ROOM_COUNT: 4,
-    SKY_H: 36,                // 顶部露天天空带
-    CEILING_Y: 40,            // 天花板下沿
-    FLOOR_Y: 128,             // 室内地板
-    GROUND_Y: 180,            // 画布底
-    DOOR_Y: 92,               // 门洞顶部
+    ROOM_BOUNDS: [            // 显示布局：工作区更宽、卫生间更紧凑
+      { id: 'bedroom',  x: 0,   w: 76, legacyX: 0 },
+      { id: 'workspace',x: 76,  w: 92, legacyX: 80 },
+      { id: 'bathroom', x: 168, w: 68, legacyX: 160 },
+      { id: 'kitchen',  x: 236, w: 108, legacyX: 240 }
+    ],
+    SKY_H: 24,                // 缩短无效天空，把视觉重心拉回室内
+    CEILING_Y: 30,            // 天花板下沿
+    LEGACY_FLOOR_Y: 128,      // 人物/家具既有动作坐标基线
+    FLOOR_Y: 124,             // 收紧墙面高度，家具与角色统一跟随地板线
+    GROUND_Y: 136,            // 底部仅保留 12px 材质切面
+    DOOR_Y: 78,               // 门洞视觉顶部；抬高门框，不参与角色行为计算
 
     ROOM_NAMES: ['卧室', '工作区', '卫生间', '厨房'],
     ROOM_IDS: ['bedroom', 'workspace', 'bathroom', 'kitchen'],
+
+    // 将旧版 4×80 的绝对 x 坐标映射到新的不等宽房间起点。
+    // 物件本身不缩放，只平移，避免像素被非整数拉伸。
+    mapLegacyX(x) {
+      const idx = Math.max(0, Math.min(3, Math.floor(Number(x) / 80)));
+      const room = this.ROOM_BOUNDS[idx];
+      return Number(x) + room.x - room.legacyX;
+    },
 
     // ---- 作息（东八区小时，浮点） ----
     SCHEDULE: [
@@ -53,7 +68,8 @@
       { id: 'lunch',     name: '午餐', from: 12,   to: 13 },
       { id: 'work',      name: '工作', from: 13,   to: 18 },
       { id: 'dinner',    name: '晚餐', from: 18,   to: 19 },
-      { id: 'leisure',   name: '休闲', from: 19,   to: 22 },
+      { id: 'leisure',   name: '休闲', from: 19,   to: 21.5 },
+      { id: 'call',      name: '和 MOMO 通话', from: 21.5, to: 22 },
       { id: 'wash',      name: '洗漱', from: 22,   to: 22.5 },
       { id: 'sleep',     name: '睡觉', from: 22.5, to: 24 }
     ],

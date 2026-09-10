@@ -75,6 +75,7 @@
     els.optStars.checked = !!P.Storage.state.settings.stars;
     els.optAnim.checked = !!P.Storage.state.settings.anim;
     updateSoundBtn(P.Audio.enabled());
+    if (P.LifeUI) P.LifeUI.init(document.getElementById('scene'));
   }
 
   function updateSoundBtn(on) {
@@ -85,6 +86,7 @@
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
   function update(dt) {
+    if (P.LifeUI) P.LifeUI.update(dt);
     const now = performance.now();
     if (now - lastClock < 250) return;
     lastClock = now;

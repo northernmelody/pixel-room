@@ -8,6 +8,7 @@
 
   const DEFAULTS = {
     v: 1,
+    life: { epochDay: null, outfitIndex: 0, snackAfter: 0, changeAfter: 0 },
     lamps: { ceiling: [false, false, false, false], deskLamp: false, nightLamp: false, touched: false, touchedDate: '' },
     sound: false,          // 默认静音
     volume: 60,
@@ -39,7 +40,7 @@
     if (!saved || typeof saved !== 'object') return base;
     const out = JSON.parse(JSON.stringify(base));
     for (const k in saved) {
-      if (k === 'settings' || k === 'lamps') {
+      if (k === 'settings' || k === 'lamps' || k === 'life') {
         out[k] = Object.assign({}, out[k], saved[k]);
       } else if (k === 'items') {
         out[k] = Object.assign({}, out[k], saved[k] || {});

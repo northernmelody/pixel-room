@@ -15,7 +15,7 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
  * 所有 HTML UI 元素（时间卡片/声音/设置按钮/设置面板/电脑弹窗/toast）
  * 尺寸统一用 rem 表示，自动随根字号等比缩放，无需逐个改 px。
  * Canvas 本身由 #scene-wrap 的 min() 计算 + main.js 的 fitSceneSize()
- * 保持 16:9 缩放，本文件只负责 HTML 覆盖层。
+ * 保持场景原始比例缩放，本文件只负责 HTML 覆盖层。
  * ============================================================ */
 html { font-size: 16px; }
 @media (max-width: 768px) { html { font-size: 12px; } }
@@ -24,7 +24,7 @@ html { font-size: 16px; }
 @media (max-height: 500px) and (max-width: 900px) { html { font-size: 12px; } }
 
 #app { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(120% 100% at 50% 0%, #141a33 0%, #0b0e1a 60%); }
-#scene-wrap { position: relative; width: min(100vw - 24px, calc((100vh - 24px) * 16 / 9)); aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; }
+#scene-wrap { position: relative; width: min(100vw - 24px, calc((100vh - 24px) * 43 / 17)); aspect-ratio: 43 / 17; display: flex; align-items: center; justify-content: center; }
 #scene { width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; border-radius: 10px; background: #0a0e22; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.06); }
 
 /* ---- 通用面板 ---- */
@@ -71,6 +71,35 @@ html { font-size: 16px; }
 #lyric-box.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 #lyric-title { font-size: 0.8125rem; color: var(--muted); margin-bottom: 0.3125rem; white-space: nowrap; }
 #lyric-line { font-size: 1.25rem; color: var(--text); letter-spacing: 0.06em; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- 日常物件、信件与通话 ---- */
+#scene.is-interactive { cursor: pointer; }
+.life-hover { position: absolute; z-index: 18; max-width: 12rem; padding: .28rem .5rem; border: 1px solid rgba(255,255,255,.18); border-radius: .4rem; background: rgba(11,15,29,.9); color: #f7ebd7; font-size: .72rem; line-height: 1.25; pointer-events: none; opacity: 0; transform: translateY(3px); transition: opacity .12s, transform .12s; }
+.life-hover.show { opacity: 1; transform: translateY(0); }
+.life-tip { position: absolute; left: 50%; bottom: .7rem; z-index: 19; max-width: min(88%, 20rem); padding: .42rem .75rem; border: 1px solid rgba(255,255,255,.15); border-radius: 999px; background: rgba(21,25,43,.92); color: #f5efe4; font-size: .76rem; text-align: center; pointer-events: none; opacity: 0; transform: translate(-50%, 8px); transition: opacity .18s, transform .18s; }
+.life-tip.show { opacity: 1; transform: translate(-50%, 0); }
+.call-card { position: absolute; left: .8rem; bottom: .7rem; z-index: 16; width: min(11.8rem, 37%); padding: .45rem .6rem; overflow: hidden; border: 1px solid rgba(255,218,159,.32); border-radius: .55rem; background: rgba(28,24,37,.84); color: #f8ead2; text-align: left; cursor: pointer; box-shadow: 0 5px 20px rgba(0,0,0,.25); backdrop-filter: blur(5px); transition: transform .15s, background .15s; }
+.call-card:hover { transform: translateY(-1px); background: rgba(48,37,56,.94); }
+.call-card.hidden { display: none; }
+.call-card-title, .call-card-speaker, .call-card-text { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.call-card-title { font-size: .72rem; color: #f1c985; }
+.call-card-speaker { margin-top: .12rem; font-size: .64rem; color: #cdbbdc; }
+.call-card-text { font-size: .73rem; line-height: 1.35; }
+.life-modal { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(5,7,15,.72); backdrop-filter: blur(4px); }
+.life-modal-shell { position: relative; width: min(42rem, 94vw); max-height: min(84vh, 48rem); overflow: auto; border-radius: .8rem; box-shadow: 0 24px 80px rgba(0,0,0,.6); }
+.life-modal-close { position: sticky; top: .45rem; float: right; z-index: 2; width: 2rem; height: 2rem; margin: .45rem .5rem 0 0; border: 1px solid rgba(90,60,37,.28); border-radius: 50%; background: rgba(255,251,239,.88); color: #5d4631; font-size: 1.3rem; line-height: 1; cursor: pointer; }
+.letter-paper { min-height: 25rem; padding: 3.5rem clamp(1.7rem, 7vw, 5rem); background: #f5ecd8; color: #4d3827; font-family: "KaiTi", "STKaiti", serif; font-size: 1.1rem; line-height: 2; }
+.letter-paper h2 { margin-bottom: .3rem; font-size: 1.5rem; font-weight: 600; text-align: center; }
+.letter-paper p { margin: 0 0 .95rem; white-space: pre-wrap; }
+.letter-paper .letter-meta { margin-bottom: 1.5rem; color: #80634d; font-size: .88rem; text-align: center; }
+.call-log { padding: 2.8rem clamp(1.2rem, 5vw, 2.5rem) 1.8rem; background: #181c2d; color: #e8eaf4; }
+.call-log h2 { margin-bottom: .25rem; font-size: 1.2rem; }
+.call-log-sub { margin-bottom: 1.1rem; color: #9ca8c6; font-size: .78rem; }
+.call-line { width: fit-content; max-width: 87%; margin: .55rem 0; padding: .5rem .7rem; border-radius: .65rem; font-size: .9rem; line-height: 1.55; }
+.call-line.momo { background: #323953; }
+.call-line.me { margin-left: auto; background: #4c3e59; }
+.call-line strong { margin-right: .2rem; color: #edcb96; }
+body.life-modal-open { overflow: hidden; }
 
 /* ============================================================
  * 小屏细节微调

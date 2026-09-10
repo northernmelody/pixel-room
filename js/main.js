@@ -8,19 +8,23 @@
   let last = 0;
 
   // 画布 CSS 显示尺寸取整到逻辑像素（×PIXEL）的整数倍，
-  // 避免浏览器把 1280×720 位图缩放到非整数尺寸，导致像素行错位、出现条纹
+  // 显示比例跟随逻辑画布，避免紧凑房间被重新拉高。
   function fitSceneSize() {
     const c = document.getElementById('scene');
     if (!c || !P.Config) return;
     const PIXEL = P.Config.PIXEL;
     const availW = window.innerWidth - 24;
     const availH = window.innerHeight - 24;
-    let w = Math.min(availW, availH * 16 / 9);
+    const ratio = P.Config.LOGICAL_W / P.Config.LOGICAL_H;
+    let w = Math.min(availW, availH * ratio);
     w = Math.max(PIXEL, Math.floor(w / PIXEL) * PIXEL);
-    let h = Math.round(w * 9 / 16);
+    let h = Math.round(w / ratio);
     h = Math.max(PIXEL, Math.floor(h / PIXEL) * PIXEL);
     c.style.width = w + 'px';
     c.style.height = h + 'px';
+    const wrap = document.getElementById('scene-wrap');
+    wrap.style.width = w + 'px';
+    wrap.style.height = h + 'px';
   }
 
   function init() {
@@ -30,6 +34,8 @@
     const canvas = document.getElementById('scene');
     if (!canvas) return;
 
+    canvas.width = P.Config.CANVAS_W;
+    canvas.height = P.Config.CANVAS_H;
     P.Renderer.init(canvas);
     fitSceneSize();
     window.addEventListener('resize', fitSceneSize);

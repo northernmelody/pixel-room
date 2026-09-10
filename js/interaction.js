@@ -6,6 +6,7 @@
   const P = window.PixelRoom; if (!P) return;
   const C = P.Config;
   const FLOOR = C.FLOOR_Y;
+  const ENTITY_SHIFT_Y = FLOOR - (C.LEGACY_FLOOR_Y || FLOOR);
 
   let canvas = null;
   let computerOpen = false;
@@ -58,6 +59,11 @@
 
   function onClick(e) {
     const p = toLogical(e);
+    // 日常静态物件优先于角色/宠物的宽松命中范围，避免书和餐桌被误判。
+    if (P.LifeUI && P.LifeUI.handleClick && P.LifeUI.handleClick(p)) {
+      if (P.Audio) P.Audio.ui();
+      return;
+    }
     // 吉他（卧室右墙边，弹唱触发；先检查小人状态）
     const gr = P.RoomLayout.hits().find(function (r) { return r.type === 'guitar'; });
     if (gr && p.x >= gr.x && p.x <= gr.x + gr.w && p.y >= gr.y && p.y <= gr.y + gr.h) {
@@ -68,6 +74,8 @@
         if (P.UI) P.UI.toast('🎵 正在弹唱中…');
       } else if (ret === 'sleep') {
         if (P.UI) P.UI.toast('🛌 小人在睡觉，别打扰他');
+      } else if (ret === 'call') {
+        if (P.UI) P.UI.toast('☎ 正在和 MOMO 通话，晚点再弹吧');
       }
       if (P.Audio) P.Audio.ui();
       return;
@@ -80,7 +88,7 @@
     }
     // 猫
     const cp = P.Cat.pos();
-    const catFloor = cp.y == null ? FLOOR : cp.y;
+    const catFloor = cp.y == null ? FLOOR : cp.y + ENTITY_SHIFT_Y;
     if (Math.abs(p.x - cp.x) <= 9 && p.y >= catFloor - 16 && p.y <= catFloor + 2) {
       P.Cat.pet();
       if (P.UI) P.UI.toast('🐱 喵～ 摸到猫了！');

@@ -72,12 +72,14 @@
     ctx.drawImage(staticCanvas, 0, 0);
     // 3) 动态家具内容（窗内天空/屏幕/蒸汽/水珠/吊灯）
     P.RoomLayout.drawDynamic(ctx, st, t / 1000);
-    // 4) 小人（z=2）
+    // 4-6) 人物与宠物继续使用稳定的旧版动作基线，显示时统一下移到新地板。
+    const entityShiftY = C.FLOOR_Y - (C.LEGACY_FLOOR_Y || C.FLOOR_Y);
+    ctx.save();
+    ctx.translate(0, entityShiftY);
     P.Character.draw(ctx, st);
-    // 5) 猫（z=2）
     P.Cat.draw(ctx, st);
-    // 6) 腊肠狗（z=2）
     P.Dog.draw(ctx, st);
+    ctx.restore();
     // 7) 雨雪粒子
     P.WeatherEffects.draw(ctx, st);
     // 7) 室内光照叠加（光斑/冷光/灯晕/暗角）

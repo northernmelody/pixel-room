@@ -137,11 +137,12 @@ try {
 storageState.items.dogBowl = 3;   // 状态遍历阶段可能已吃掉，重置
 Dog.eatFood();
 let eatDone = false;
-for (let i = 0; i < 600 && !eatDone; i++) {
+// 最远可能从左侧边界走到厨房餐碗；给足移动 + 进食动画时间。
+for (let i = 0; i < 900 && !eatDone; i++) {
   Dog.update(0.05);
   if (storageState.items.dogBowl === 2) eatDone = true;
 }
-assert(eatDone, 'eat should decrement dogBowl 3->2 (items.dogBowl=' + storageState.items.dogBowl + ')');
+assert(eatDone, 'eat should decrement dogBowl 3->2 (items.dogBowl=' + storageState.items.dogBowl + ', debug=' + JSON.stringify(Dog._debug()) + ')');
 
 // ---- 点击交互 ----
 const r1 = Dog.interact();

@@ -5,7 +5,8 @@
   'use strict';
   const P = window.PixelRoom; if (!P) return;
   const C = P.Config;
-  const FLOOR = C.FLOOR_Y;
+  const FLOOR = C.LEGACY_FLOOR_Y || C.FLOOR_Y;
+  const X = C.mapLegacyX.bind(C);
 
   const SKIN = '#f5e6c8';          // 暖黄偏白
   const SKIN_SHADOW = '#d9c8a0';   // 阴影
@@ -20,29 +21,32 @@
 
   // 各活动目标（绝对 x）
   const TARGETS = {
-    sleep:     { room: 0, x: 24,  pose: 'sleep' },
-    wash:      { room: 2, x: 193, pose: 'brush' },
-    breakfast: { room: 3, x: 248, pose: 'eat' },
-    work:      { room: 1, x: 147, pose: 'work' },
-    lunch:     { room: 3, x: 248, pose: 'eat' },
-    dinner:    { room: 3, x: 248, pose: 'eat' },
-    leisure:   { room: 0, x: 27,  pose: 'leisure' }
+    sleep:     { room: 0, x: X(24),  pose: 'sleep' },
+    wash:      { room: 2, x: X(193), pose: 'brush' },
+    breakfast: { room: 3, x: X(248), pose: 'eat' },
+    work:      { room: 1, x: X(147), pose: 'work' },
+    lunch:     { room: 3, x: X(248), pose: 'eat' },
+    dinner:    { room: 3, x: X(248), pose: 'eat' },
+    leisure:   { room: 0, x: X(27),  pose: 'leisure' },
+    call:      { room: 0, x: X(27),  pose: 'call' }
   };
 
   // ---- 休闲活动（19:00-22:00 子状态机）----
   // 位置：game 工作区电脑前 / read 床边 / exercise 工作区空处（书架前）
   //       play_cat 工作区空处 / look_out 卧室窗边 / phone 床边
   const LEISURE_SPOTS = {
-    game:     { room: 1, x: 147, dir: -1 },  // 面朝电脑（显示器在左侧）
-    read:     { room: 0, x: 27,  dir: 1  },   // 床边
-    exercise: { room: 1, x: 96,  dir: 1  },   // 书架前空地
-    play_cat: { room: 1, x: 99,  dir: 1  },   // 空地逗猫
-    look_out: { room: 0, x: 63,  dir: -1 },   // 窗边面朝窗外
-    phone:    { room: 0, x: 27,  dir: 1  }    // 床边
+    game:     { room: 1, x: X(147), dir: -1 },  // 面朝电脑（显示器在左侧）
+    read:     { room: 0, x: X(27),  dir: 1  },   // 床边
+    exercise: { room: 1, x: X(96),  dir: 1  },   // 书架前空地
+    play_cat: { room: 1, x: X(99),  dir: 1  },   // 空地逗猫
+    look_out: { room: 0, x: X(61),  dir: -1 },   // 窗边面朝窗外
+    phone:    { room: 0, x: X(27),  dir: 1  },   // 床边
+    snack:    { room: 3, x: X(262), dir: 1 },
+    change:   { room: 0, x: X(20),  dir: -1 }
   };
   const LEISURE_NAMES = {
     game: '打游戏', read: '看书', exercise: '健身',
-    play_cat: '逗猫', look_out: '发呆看窗外', phone: '玩手机'
+    play_cat: '逗猫', look_out: '发呆看窗外', phone: '玩手机', snack: '拿零食', change: '换衣服'
   };
   // 调试加速：?leisurefast 让休闲活动时长缩至 1/50（便于观察切换）
   const LEISURE_SCALE = (typeof location !== 'undefined' && /[?&]leisurefast/.test(location.search)) ? 0.02 : 1;
@@ -58,9 +62,21 @@
   function isMeal(id) { return id === 'breakfast' || id === 'lunch' || id === 'dinner'; }
 
   function targetFor(activity, washPhase) {
-    if (activity === 'wash' && washPhase === 'shower') return { room: 2, x: 170, pose: 'shower' };
-    if (activity === 'wash') return { room: 2, x: 215, pose: 'walk' }; // 早晨先到马桶前
-    return TARGETS[activity] || { room: 1, x: 147, pose: 'idle' };
+    if (activity === 'wash' && washPhase === 'shower') return { room: 2, x: X(170), pose: 'shower' };
+    if (activity === 'wash') return { room: 2, x: X(215), pose: 'walk' }; // 早晨先到马桶前
+    return TARGETS[activity] || { room: 1, x: X(147), pose: 'idle' };
+  }
+
+  function mealTarget(activity, tp) {
+    return { room: 3, x: X(262), pose: 'fridge' };
+  }
+
+  function chooseMeal(activity, tp) {
+    const item = P.DailyLife ? P.DailyLife.meal(activity, tp) : null;
+    const fallback = (MEAL_FOODS[activity] || MEAL_FOODS.breakfast)[0];
+    char.mealFood = { type: item && item.type ? item.type : fallback, name: item && item.name ? item.name : '家常饭菜', phase: 'go' };
+    char.mealName = char.mealFood.name;
+    return char.mealFood;
   }
 
   function pickScreen() {
@@ -75,7 +91,7 @@
     const washPhase = tp.hour >= 22 ? 'shower' : 'brush';
     let t;
     if (act === 'wash') t = targetFor(act, washPhase);
-    else if (isMeal(act)) t = { room: 3, x: 262, pose: 'fridge' };
+    else if (isMeal(act)) t = mealTarget(act, tp);
     else t = targetFor(act, washPhase);
     char = {
       x: t.x, room: t.room, dir: t.pose === 'work' ? -1 : 1,
@@ -89,6 +105,8 @@
       fridgePhase: act === 'wash' ? null : (isMeal(act) ? 'go' : null), // null|go|open|done
       fridgeT: 0, fridgeTMax: 1,
       mealFood: null,        // 当前餐食物类型
+      mealName: '',
+      life: null,           // 可收尾的随机活动：snack / change
       washSeq: (act === 'wash' && washPhase !== 'shower') ? 0 : null,   // 洗漱流程步
       washT: 0,
       react: null,           // 点击反应 {type,t}
@@ -108,6 +126,11 @@
     };
     screenMode = pickScreen();
     screenTimer = 8 + Math.random() * 12;
+    if (P.DailyLife) P.DailyLife.state();
+    if (isMeal(act)) {
+      chooseMeal(act, tp);
+      char.fridgePhase = t.pose === 'eat' ? 'done' : t.pose === 'cook' ? 'cook' : 'go';
+    }
   }
 
   // 早晨洗漱流程：马桶 → 冲水 → 洗手 → 刷牙
@@ -135,7 +158,7 @@
         if (char.washT <= 0) {
           char.washSeq = 3;
           char.pose = 'walk';
-          char.target = { room: 2, x: 186, pose: 'handwash' };
+          char.target = { room: 2, x: X(186), pose: 'handwash' };
           char.moving = true;
         }
         break;
@@ -151,7 +174,7 @@
         if (char.washT <= 0) {
           char.washSeq = 5;
           char.pose = 'brush';
-          char.target = { room: 2, x: 193, pose: 'brush' };
+          char.target = { room: 2, x: X(193), pose: 'brush' };
         }
         break;
       default: // 5 = 刷牙（原有）
@@ -175,9 +198,15 @@
     const w = {
       game: 20, read: 18, exercise: exW,
       play_cat: catSleep ? 0 : 16,
-      look_out: 7, phone: 18
+      look_out: 7, phone: 18, snack: 12, change: 7
     };
     if (catSleep) { w.read += 8; w.phone += 8; }   // 猫睡觉 → 改为 read 或 phone
+    if (P.DailyLife) {
+      const life = P.DailyLife.state(), minute = P.DailyLife.minuteStamp(tp);
+      if (minute < (life.snackAfter || 0)) w.snack = 0;
+      if (minute < (life.changeAfter || 0)) w.change = 0;
+    }
+    if (h >= 21.45) { w.snack = 0; w.change = 0; }
     if (char.leisureAct && w[char.leisureAct] !== undefined) w[char.leisureAct] = 0;
     let total = 0;
     for (const k in w) total += w[k];
@@ -192,9 +221,86 @@
     return (5 + Math.random() * 15) * 60 * LEISURE_SCALE;
   }
 
+  function beginLife(kind) {
+    const now = P.Time.now();
+    const life = P.DailyLife ? P.DailyLife.state() : {};
+    char.life = { kind: kind, phase: 'go', t: 0, returnTo: char._lifeReturnTo || 'read', snack: null };
+    char._lifeReturnTo = null;
+    char.leisureAct = kind;
+    char.leisureT = -1;
+    if (kind === 'snack') {
+      const list = P.StoryData && P.StoryData.snacks || [{ name: '小饼干', color: '#d5a46c' }];
+      const index = Math.floor((P.DailyLife ? P.DailyLife.dayNumber(now) : now.day) % list.length);
+      char.life.snack = list[index];
+      char.mealFood = { type: 'snack', name: char.life.snack.name, phase: 'snack' };
+      char.target = { room: 3, x: X(262), pose: 'fridge' };
+      char.moving = true;
+    } else {
+      char.target = { room: 0, x: X(20), pose: 'change' };
+      char.moving = true;
+    }
+  }
+
+  function finishLife() {
+    const life = char.life;
+    const now = P.Time.now();
+    if (P.DailyLife) {
+      const stamp = P.DailyLife.minuteStamp(now);
+      const s = P.DailyLife.state();
+      if (life.kind === 'snack') s.snackAfter = stamp + 90;
+      if (life.kind === 'change') { s.changeAfter = stamp + 180; s.outfitIndex = ((s.outfitIndex || 0) + 1) % 3; }
+      P.Storage.save();
+    }
+    const returnTo = life.returnTo || 'read';
+    char.life = null;
+    char.leisureAct = null;
+    goToLeisure(returnTo);
+  }
+
+  function updateLife(dt) {
+    const life = char.life;
+    if (!life) return;
+    if (life.kind === 'snack') {
+      if (life.phase === 'go' && !char.moving) {
+        life.phase = 'open'; char.fridgeT = 1.6; char.fridgeTMax = 1.6;
+        char.fridgePhase = 'open'; char.pose = 'fridge';
+      } else if (life.phase === 'open') {
+        char.fridgeT -= dt;
+        if (char.fridgeT <= 0) {
+          life.phase = 'return'; char.fridgePhase = null;
+          char.target = { room: 3, x: X(248), pose: 'eat' }; char.moving = true;
+        }
+      } else if (life.phase === 'return' && !char.moving && char.pose === 'eat') {
+        life.phase = 'eat'; life.t = 22 + Math.random() * 16;
+      } else if (life.phase === 'eat') {
+        life.t -= dt;
+        if (life.t <= 0) finishLife();
+      }
+      return;
+    }
+    if (life.phase === 'go' && !char.moving) {
+      life.phase = 'open'; life.t = 1.4; char.pose = 'change';
+    } else if (life.phase === 'open') {
+      life.t -= dt;
+      if (life.t <= 0) { life.phase = 'change'; life.t = 4.5; char.pose = 'change'; }
+    } else if (life.phase === 'change') {
+      life.t -= dt;
+      if (life.t <= 0) { life.phase = 'close'; life.t = 1.0; }
+    } else if (life.phase === 'close') {
+      life.t -= dt;
+      if (life.t <= 0) finishLife();
+    }
+  }
+
   // 开始一项活动：走到对应区域（不瞬移），到达后开始计时
   function goToLeisure(id) {
     if (char.leisureAct === 'play_cat' && P.Cat && P.Cat.endPlay) P.Cat.endPlay();
+    const returnTo = char.leisureAct || 'read';
+    if (id === 'snack' || id === 'change') {
+      char._lifeReturnTo = returnTo;
+      beginLife(id);
+      return;
+    }
     char.leisureAct = id;
     char.leisureT = -1;                 // 标记"尚未到达开始"
     char.leisureSub = null; char.leisureSubT = 0;
@@ -263,6 +369,7 @@
 
   // 休闲主逻辑：切换活动（走到对应位置）→ 计时 → 结束随机换下一项
   function leisureUpdate(dt) {
+    if (char.life) { updateLife(dt); return; }
     if (!char.leisureAct) {
       goToLeisure(pickLeisure());
       return;
@@ -311,15 +418,15 @@
     char.nightAct = type;
     switch (type) {
       case 'toilet':
-        char.target = { room: 2, x: 212, pose: 'toilet' };
+        char.target = { room: 2, x: X(212), pose: 'toilet' };
         char.nightActT = 45 + Math.random() * 45;
         break;
       case 'drink':
-        char.target = { room: 3, x: 262, pose: 'breakDrink' };
+        char.target = { room: 3, x: X(262), pose: 'breakDrink' };
         char.nightActT = 30 + Math.random() * 40;
         break;
       case 'snack':
-        char.target = { room: 3, x: 248, pose: 'eat' };
+        char.target = { room: 3, x: X(248), pose: 'eat' };
         char.nightActT = 60 + Math.random() * 60;
         break;
       case 'phoneToss':
@@ -357,7 +464,7 @@
         if (char.nightActT <= 0) {
           char.nightAct = null;
           // 回到床上继续睡（不影响 07:30 起床）
-          char.target = { room: 0, x: 24, pose: 'sleep' };
+          char.target = { room: 0, x: X(24), pose: 'sleep' };
           char.moving = true;
         }
       }
@@ -368,6 +475,13 @@
     if (!char) return;
     const tp = P.Time.now();
     const act = P.Time.getSchedule(tp).id;
+
+    // 固定通话是晚间硬约束：通话窗口开始时收掉弹唱并回到床边。
+    if (act === 'call' && char.guitar) {
+      char.guitar = null;
+      if (P.UI && P.UI.hideLyric) P.UI.hideLyric();
+      char.activity = '__call_interrupt'; char.target = targetFor('call'); char.moving = true;
+    }
 
     // 点击反应：暂停当前活动 1-2 秒
     if (char.react) {
@@ -401,7 +515,11 @@
         char.nightPlan = null;
         char.nightAct = null;
       }
-      if (act === 'wash') {
+      if (act === 'call') {
+        char.washSeq = null; char.fridgePhase = null; char.life = null;
+        char.leisureAct = null; char.leisureT = -1;
+        char.target = targetFor('call', char.washPhase);
+      } else if (act === 'wash') {
         char.washSeq = char.washPhase === 'shower' ? null : 0;
         char.fridgePhase = null;
         char.target = targetFor(act, char.washPhase);
@@ -411,7 +529,7 @@
         char.fridgeT = 0;
         // 站在冰箱左侧（x=262，与喝水点同位），面朝冰箱 → 开门时整个内腔可见，
         // 不会被小人身体挡住（旧站位 x=277 正对门缝，开门的内部几乎被完全遮住）
-        char.target = { room: 3, x: 262, pose: 'fridge' };
+        char.target = { room: 3, x: X(262), pose: 'fridge' };
       } else if (act === 'leisure') {
         // 休闲：具体活动与目标由休闲状态机决定（本帧 leisureUpdate 即开始）
         char.washSeq = null;
@@ -459,15 +577,26 @@
       } else if (char.fridgePhase === 'open') {
         char.fridgeT -= dt;
         if (char.fridgeT <= 0) {
-          char.fridgePhase = 'done';
-          char.target = { room: 3, x: 248, pose: 'eat' };
+          char.fridgePhase = 'cook_go';
+          if (!char.mealFood) chooseMeal(char.activity, tp);
+          char.mealFood.phase = 'cook_go';
+          char.target = { room: 3, x: X(284), pose: 'cook' };
           char.moving = true;
         }
-      } else if (char.fridgePhase === 'done' && !char.moving && char.pose === 'eat') {
-        if (!char.mealFood) {
-          const list = MEAL_FOODS[char.activity] || MEAL_FOODS.breakfast;
-          char.mealFood = list[(Math.random() * list.length) | 0];
+      } else if (char.fridgePhase === 'cook_go' && !char.moving) {
+        char.fridgePhase = 'cook'; char.cookT = 7 + Math.random() * 3;
+        if (char.mealFood) char.mealFood.phase = 'cook';
+        char.pose = 'cook';
+      } else if (char.fridgePhase === 'cook') {
+        char.cookT -= dt;
+        if (char.cookT <= 0) {
+          char.fridgePhase = 'serve';
+          if (char.mealFood) char.mealFood.phase = 'serve';
+          char.target = { room: 3, x: X(248), pose: 'eat' }; char.moving = true;
         }
+      } else if (char.fridgePhase === 'serve' && !char.moving && char.pose === 'eat') {
+        char.fridgePhase = 'done';
+        if (char.mealFood) char.mealFood.phase = 'eat';
       }
     } else {
       char.fridgePhase = null;
@@ -495,12 +624,12 @@
       char.breakT -= dt;
       if (char.pose === 'work' && char.breakT <= 0 && Math.random() < dt * 0.05) {
         char.breakAt = 4 + Math.random() * 3;
-        char.target = { room: 3, x: 262, pose: 'breakDrink' };
+        char.target = { room: 3, x: X(262), pose: 'breakDrink' };
         char.moving = true;
       } else if (char.pose === 'breakDrink') {
         char.breakAt -= dt;
         if (char.breakAt <= 0) {
-          char.target = { room: 1, x: 147, pose: 'work' };
+          char.target = { room: 1, x: X(147), pose: 'work' };
           char.moving = true;
           char.breakT = 30 + Math.random() * 50;
         }
@@ -519,7 +648,7 @@
   }
 
   function pos() {
-    return { x: char ? char.x : 147, dir: char ? char.dir : -1 };
+    return { x: char ? char.x : X(147), dir: char ? char.dir : -1 };
   }
 
   function screenModeName(mode) {
@@ -550,7 +679,7 @@
   }
 
   function mealFood() {
-    return char && char.mealFood ? { type: char.mealFood } : null;
+    return char && char.mealFood ? { type: char.mealFood.type, name: char.mealFood.name, phase: char.mealFood.phase } : null;
   }
 
   // 点击反应（随机 4 种之一，或指定类型）
@@ -568,7 +697,7 @@
   //       sing（逐句歌词）→ put（床边放下）→ back（抱回吉他位）→
   //       place（靠墙放回，墙上吉他恢复）→ 结束恢复触发前行为
   // ============================================================
-  const GUITAR_PICK_X = 64;   // 走到吉他旁的位置（吉他在 x=68-76，站在其左侧）
+  const GUITAR_PICK_X = 60;   // 跟随窗下吉他向内移动，站在其左侧拿取和放回
   const GUITAR_BED_X = 27;    // 床边坐下的位置（与 read/phone 同侧）
 
   // 随机选歌：不连续重复同一首（平均权重；后续可扩展 weight 加权 / 播放次数偏好）
@@ -588,6 +717,7 @@
   // 洗漱/吃饭/工作/休闲/夜间活动等时段均可触发；弹唱中不可重复触发
   function startGuitar() {
     if (!char) return 'busy';
+    if (callInfo() || (P.Time && P.Time.getSchedule && P.Time.getSchedule(P.Time.now()).id === 'call')) return 'call';
     if (char.guitar) return 'busy';                       // 已在弹唱
     if (char.pose === 'sleep') return 'sleep';            // 睡在床上不可弹
     // 触发前状态快照（用于弹唱后恢复）；先快照再清理
@@ -658,7 +788,7 @@
     g.t += dt;
     if (char.arriveT > 0) char.arriveT -= dt;
     switch (g.phase) {
-      case 'go':            // 走向吉他（x=64）
+      case 'go':            // 走向吉他
         if (!moveToward(GUITAR_PICK_X, 'sing', dt)) break;
         g.phase = 'pick'; g.t = 0; g.tMax = 0.8;
         break;
@@ -734,7 +864,7 @@
     } else {
       // 其余情况（含跨时段/洗漱/吃饭/工作等短时行为）：按当前时段重新调度
       char.activity = '__guitar_done';
-      char.target = { room: 1, x: 147, pose: 'idle' };
+      char.target = { room: 1, x: X(147), pose: 'idle' };
       char.moving = true;
     }
   }
@@ -742,6 +872,47 @@
   function guitarActive() { return !!(char && char.guitar); }
   function guitarSong() { return (char && char.guitar) ? char.guitar.song : null; }
   function guitarTaken() { return !!(char && char.guitar && char.guitar.taken); }
+
+  function callInfo() {
+    if (!char || char.activity !== 'call' || !P.DailyLife) return null;
+    const current = P.DailyLife.todayCall(P.Time.now());
+    const conversation = current.conversation;
+    if (!conversation) return null;
+    const elapsed = Math.max(0, (P.Time.now().min - 30) * 60 + P.Time.now().sec);
+    const index = Math.min(conversation.lines.length - 1, Math.floor(elapsed / 150));
+    const line = conversation.lines[index];
+    return { day: current.day, title: conversation.title, speaker: line.speaker, text: line.text, index: index, total: conversation.lines.length, elapsed: elapsed, connected: true };
+  }
+
+  function lifeStatus() {
+    const info = callInfo();
+    if (info) return { kind: 'call', phase: 'connected', wardrobeOpen: false };
+    if (char && isMeal(char.activity)) {
+      const phase = char.mealFood && char.mealFood.phase;
+      return { kind: 'meal', phase: phase === 'cook_go' ? 'cook' : (phase === 'serve' || phase === 'eat' ? 'eat' : phase || 'prepare'), wardrobeOpen: false };
+    }
+    const l = char && char.life;
+    return { kind: l ? l.kind : (char && char.activity === 'leisure' ? 'leisure' : (char && char.activity)), phase: l ? l.phase : null, snack: l && l.snack, wardrobeOpen: !!(l && l.kind === 'change' && l.phase !== 'close') };
+  }
+
+  function startChange() {
+    if (!char || char.activity !== 'leisure' || char.life || char.guitar) return 'busy';
+    beginLife('change'); return 'ok';
+  }
+
+  function startSnack() {
+    if (!char || char.activity !== 'leisure' || char.life || char.guitar) return 'busy';
+    beginLife('snack'); return 'ok';
+  }
+
+  function wardrobeOpen() {
+    const l = char && char.life;
+    if (!l || l.kind !== 'change') return null;
+    if (l.phase === 'open') return { p: Math.max(0, Math.min(1, 1 - l.t / 1.4)) };
+    if (l.phase === 'change') return { p: 1 };
+    if (l.phase === 'close') return { p: Math.max(0, Math.min(1, l.t)) };
+    return { p: 0 };
+  }
 
   // ============================================================
   // 绘制
@@ -753,6 +924,9 @@
     const s = st.season.id;
     if (s === 'summer') shirt = freel ? '#ffb06a' : '#7fd0a8';
     if (s === 'winter') { shirt = freel ? '#b05a8a' : '#3a62a8'; pants = '#333a4a'; }
+    const outfitIndex = P.DailyLife ? (P.DailyLife.state().outfitIndex || 0) : 0;
+    if (outfitIndex === 1) { shirt = '#d98962'; pants = '#4d526b'; }
+    if (outfitIndex === 2) { shirt = '#6a82c8'; pants = '#6a4f63'; }
     return { shirt: shirt, pants: pants };
   }
 
@@ -844,6 +1018,9 @@
     if (pose === 'eat') { drawEat(ctx, hx, o, t); return; }
     if (pose === 'brush') { drawBrush(ctx, hx, o, t); return; }
     if (pose === 'breakDrink') { drawDrink(ctx, hx, o, t); return; }
+    if (pose === 'call') { drawCall(ctx, hx, o, t); return; }
+    if (pose === 'cook') { drawCook(ctx, hx, o, t); return; }
+    if (pose === 'change') { drawChange(ctx, hx, o, t); return; }
 
     // ---- 休闲活动 ----
     if (pose === 'game') { drawGame(ctx, hx, o, t); return; }
@@ -1449,6 +1626,25 @@
     drawPhoneSit(ctx, hx, o, t);
   }
 
+  function drawCall(ctx, hx, o, t) {
+    drawPhoneSit(ctx, hx, o, t);
+    ctx.fillStyle = '#2a2a3a'; ctx.fillRect(hx + 4, 103, 4, 6);
+    ctx.fillStyle = '#7ad8ff'; ctx.fillRect(hx + 5, 104, 2, 1);
+  }
+
+  function drawCook(ctx, hx, o, t) {
+    drawStandBody(ctx, hx, o);
+    ctx.fillStyle = o.shirt; ctx.fillRect(hx + 3, 103, 5, 2);
+    ctx.fillStyle = SKIN; ctx.fillRect(hx + 6, 102, 2, 2);
+    drawHead(ctx, hx - 6, 95, 1);
+  }
+
+  function drawChange(ctx, hx, o, t) {
+    drawStandBody(ctx, hx, o);
+    ctx.fillStyle = SKIN; ctx.fillRect(hx + 4, 109, 2, 2);
+    drawHead(ctx, hx - 6, 95, 1);
+  }
+
   // 坐床边玩手机（含滑动动画 + 光映脸）
   function drawPhoneSit(ctx, hx, o, t) {
     const st = sitEase();
@@ -1727,7 +1923,7 @@
 
   function drawShower(ctx) {
     // 淋浴剪影（玻璃后）
-    const sx = 168;
+    const sx = X(168);
     ctx.fillStyle = 'rgba(140,160,180,0.75)';
     ctx.fillRect(sx - 3, 112, 8, 12);   // 身体
     ctx.fillRect(sx - 2, 116, 6, 12);   // 腿
@@ -1737,10 +1933,10 @@
     ctx.fillRect(sx + 5, 104, 2, 6);
     // 重新画玻璃（人物在玻璃后面）
     ctx.fillStyle = 'rgba(160,220,230,0.4)';
-    ctx.fillRect(180, 96, 2, 32);
-    ctx.fillRect(162, 94, 22, 2);
+    ctx.fillRect(X(180), 96, 2, 32);
+    ctx.fillRect(X(162), 94, 22, 2);
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.fillRect(178, 96, 1, 32);
+    ctx.fillRect(X(178), 96, 1, 32);
   }
 
   P.Character = {
@@ -1772,6 +1968,11 @@
     nightAct: function () { return char ? char.nightAct : null; },
     fridgeOpen: fridgeOpen,
     mealFood: mealFood,
+    callInfo: callInfo,
+    lifeStatus: lifeStatus,
+    startChange: startChange,
+    startSnack: startSnack,
+    wardrobeOpen: wardrobeOpen,
     react: react,
     reactRandom: reactRandom,
     // ---- 吉他弹唱 ----
@@ -1783,7 +1984,7 @@
       if (!char) return null;
       return {
         x: char.x, pose: char.pose, activity: char.activity,
-        fridgePhase: char.fridgePhase, mealFood: char.mealFood,
+        fridgePhase: char.fridgePhase, mealFood: char.mealFood, life: char.life,
         washSeq: char.washSeq, washT: char.washT, react: char.react,
         leisureAct: char.leisureAct, leisureT: Math.round(char.leisureT),
         leisureSub: char.leisureSub, leisureSubT: Math.round(char.leisureSubT),

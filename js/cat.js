@@ -7,7 +7,8 @@
   'use strict';
   const P = window.PixelRoom; if (!P) return;
   const C = P.Config;
-  const FLOOR = C.FLOOR_Y, W = C.LOGICAL_W;
+  const FLOOR = C.LEGACY_FLOOR_Y || C.FLOOR_Y, W = Math.min(C.LOGICAL_W, 320);
+  const X = C.mapLegacyX.bind(C);
 
   // 锁定橘猫配色（单一配色）
   const PALETTES = [
@@ -16,13 +17,13 @@
 
   // 可攀爬点（x=站立位置，y=支撑面高度）
   const CLIMB_POINTS = [
-    { id: 'table',    x: 262, y: 110, durMin: 10, durMax: 30 },  // 餐桌：蹭饭/偷看
-    { id: 'fridge',   x: 274, y: 86,  durMin: 20, durMax: 60 },  // 冰箱顶：高处俯视
-    { id: 'desk',     x: 122, y: 108, durMin: 5,  durMax: 20 },  // 工作区桌面：踩键盘推咖啡杯
-    { id: 'wardrobe', x: 8,   y: 56,  durMin: 20, durMax: 60 },  // 衣柜顶
-    { id: 'cabinet',  x: 288, y: 56,  durMin: 20, durMax: 60 }   // 厨房吊柜顶
+    { id: 'table',    x: X(262), y: 110, durMin: 10, durMax: 30 },
+    { id: 'fridge',   x: X(274), y: 86,  durMin: 20, durMax: 60 },
+    { id: 'desk',     x: X(122), y: 108, durMin: 5,  durMax: 20 },
+    { id: 'wardrobe', x: X(8),   y: 56,  durMin: 20, durMax: 60 },
+    { id: 'cabinet',  x: X(288), y: 56,  durMin: 20, durMax: 60 }
   ];
-  const BOWL_X = 307;      // 猫粮碗（厨房角落）
+  const BOWL_X = X(307);   // 猫粮碗（厨房角落）
   const CURTAIN_X = 52;    // 窗帘（卧室窗左侧）
   const UNDERBED_X = 20;   // 床下
 
@@ -30,7 +31,7 @@
 
   function init() {
     // 每次打开页面随机起始位置（卧室/工作区/厨房常见落脚点，避免出生在家具里）
-    const spots = [30 + Math.random() * 24, 120 + Math.random() * 30, 250 + Math.random() * 24];
+    const spots = [X(30) + Math.random() * 24, X(120) + Math.random() * 30, X(250) + Math.random() * 24];
     const sx = Math.max(8, Math.min(W - 8, spots[(Math.random() * spots.length) | 0]));
     cat = {
       x: sx, dir: Math.random() < 0.5 ? -1 : 1, palette: PALETTES[0],
@@ -130,9 +131,9 @@
     const p = P.Character.pos();
     const spots = [
       p.x + (Math.random() * 44 - 22),
-      30 + Math.random() * 24,
-      120 + Math.random() * 30,
-      250 + Math.random() * 24
+      X(30) + Math.random() * 24,
+      X(120) + Math.random() * 30,
+      X(250) + Math.random() * 24
     ];
     return Math.max(8, Math.min(W - 8, spots[(Math.random() * spots.length) | 0]));
   }
@@ -141,8 +142,8 @@
   function nearestHide() {
     const spots = [
       { x: UNDERBED_X, y: FLOOR, hide: 'underbed', id: null },
-      { x: 8, y: 56, hide: 'perch', id: 'wardrobe' },
-      { x: 288, y: 56, hide: 'perch', id: 'cabinet' }
+      { x: X(8), y: 56, hide: 'perch', id: 'wardrobe' },
+      { x: X(288), y: 56, hide: 'perch', id: 'cabinet' }
     ];
     let best = spots[0], bd = Math.abs(spots[0].x - cat.x);
     for (let i = 1; i < spots.length; i++) {
@@ -720,17 +721,17 @@
     // 吃猫粮：碗画在猫身前（保证碗与余粮可见）
     if (c.state === 'eat') {
       ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      ctx.fillRect(304, 127, 7, 1);
+      ctx.fillRect(BOWL_X - 3, 127, 7, 1);
       ctx.fillStyle = '#e8e2d8';
-      ctx.fillRect(305, 124, 5, 2);
+      ctx.fillRect(BOWL_X - 2, 124, 5, 2);
       ctx.fillStyle = '#fdfaf2';
-      ctx.fillRect(305, 124, 5, 1);
+      ctx.fillRect(BOWL_X - 2, 124, 5, 1);
       const bfood = (P.Storage.state.items || {}).bowl || 0;
       if (bfood > 0) {
         ctx.fillStyle = '#c89050';
-        ctx.fillRect(306, 121, 3, 3);
-        if (bfood >= 2) { ctx.fillStyle = '#d8a060'; ctx.fillRect(306, 120, 3, 1); }
-        if (bfood >= 3) { ctx.fillStyle = '#a06828'; ctx.fillRect(308, 120, 1, 1); }
+        ctx.fillRect(BOWL_X - 1, 121, 3, 3);
+        if (bfood >= 2) { ctx.fillStyle = '#d8a060'; ctx.fillRect(BOWL_X - 1, 120, 3, 1); }
+        if (bfood >= 3) { ctx.fillStyle = '#a06828'; ctx.fillRect(BOWL_X + 1, 120, 1, 1); }
       }
     }
 

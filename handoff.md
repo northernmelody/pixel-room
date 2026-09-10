@@ -44,7 +44,7 @@ Pixel Room 是一个按北京时间运行的像素房间模拟器。页面展示
 | `js/dog.js` | 腊肠狗状态机、交互和绘制 |
 | `js/renderer.js` | 主渲染管线和静态缓存签名 |
 | `js/interaction.js` | Canvas 坐标换算、点击分派、电脑弹窗与放大屏 24 FPS 节流绘制 |
-| `assets/` | 静态图片资源（如 `chat-couple-bg.png` 聊天背景） |
+| `assets/` | 静态图片资源（如按需加载的 `chat-bg.jpg` 聊天背景） |
 | `js/ui.js` | 时间、活动、设置、Toast 和歌词 UI |
 | `js/main.js` | 初始化、响应式画布尺寸和主循环 |
 | `_tools/` | 离线渲染、截图分析及 Node VM 冒烟测试 |

@@ -168,6 +168,7 @@ playCalls = 0; endCalls = 0;   // 重置计数（上一段猫醒着时已产生�
 // ============================================================
 Cat.isSleeping = () => true;   // 强制猫睡觉
 clock.hour = 19.5;
+Ch.init();                     // 清掉上一轮可能残留的 play_cat 子状态
 let catPlayPicked = false;
 prevLeisure = null;
 // 重跑一段时间
