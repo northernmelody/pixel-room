@@ -53,12 +53,15 @@ const DEFINITIONS = {
   'collectible-painting': ['collectible-painting', '蓝色挂画'],
   'collectible-plant': ['collectible-plant', '桌面小盆栽'],
   'collectible-vase': ['collectible-vase', '小花瓶'],
-  human: ['human', '人物（站立）'],
-  cat: ['cat', '橘猫（静态）'],
-  dog: ['dog', '腊肠狗（坐姿）']
+  human: ['human:stand', '人物（站立）', { options: { reaction: ['stand', 'wave0', 'wave1', 'wave2', 'nod0', 'nod1', 'startle', 'lookback', 'lookup'], shower: 'boolean' } }],
+  cat: ['cat:idle', '橘猫（静态）', { options: { mood: ['idle', 'pet1', 'pet2', 'pet3', 'pet4', 'walkaway'] } }],
+  dog: ['dog:sit', '腊肠狗（坐姿）', { options: { mood: ['sit', 'bark'] } }]
 };
 
 function variantKeys(id) {
+  if (id === 'human') return ['human:stand', 'human:wave0', 'human:wave1', 'human:wave2', 'human:nod0', 'human:nod1', 'human:startle', 'human:lookback', 'human:lookup', 'human:shower'];
+  if (id === 'cat') return ['cat:idle', 'cat:pet1', 'cat:pet2', 'cat:pet3', 'cat:pet4', 'cat:walkaway'];
+  if (id === 'dog') return ['dog:sit', 'dog:bark'];
   if (id === 'bed') return ['bed:cover', 'bed:made', 'bed:messy'];
   if (id === 'nightstand') return ['nightstand:off', 'nightstand:on'];
   if (id === 'desk') return Object.keys(SPRITES).filter(key => key.startsWith('desk:'));
@@ -77,6 +80,9 @@ export const ITEM_META = Object.freeze(Object.fromEntries(Object.entries(DEFINIT
     height: Math.max(...variants.map(v => v.height)),
     defaultWidth: SPRITES[baseKey].width,
     defaultHeight: SPRITES[baseKey].height,
+    // Draw offset of the base variant; actor variants share one union box so poses never shift.
+    anchorX: SPRITES[baseKey].anchorX ?? 0,
+    anchorY: SPRITES[baseKey].anchorY ?? 0,
     label,
     ...extra
   })];
@@ -109,8 +115,16 @@ export function getItemMeta(id, options = {}) {
 
 export const ITEM_IDS = Object.freeze(Object.keys(ITEM_META));
 
+export function resolveItemVariant(id, options = {}) {
+  if (!ITEM_META[id]) throw new RangeError(`Unknown Pixel Room item id: ${id}`);
+  return resolveVariant(id, options);
+}
+
 function resolveVariant(id, options) {
   const season = SEASONS.has(options.season) ? options.season : 'spring';
+  if (id === 'human') return options.shower ? 'human:shower' : `human:${options.reaction || 'stand'}`;
+  if (id === 'cat') return `cat:${options.mood || 'idle'}`;
+  if (id === 'dog') return `dog:${options.mood || 'sit'}`;
   if (id === 'bed') {
     const blanket = ['cover', 'made', 'messy'].includes(options.blanket) ? options.blanket : 'cover';
     return `bed:${blanket}`;

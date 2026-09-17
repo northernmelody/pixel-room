@@ -40,7 +40,7 @@ export const ITEMS = Object.freeze([
 
   item('kitchen.window','window-kitchen','kitchen',107,272,'厨房的窗，照着餐桌和灶台。'),
   item('kitchen.door','exteriorDoor','kitchen',144,273,'通往庭院的木门。天气合适的傍晚，小人会自己出去荡秋千。',{action:'door'}),
-  item('kitchen.fridge','fridge','kitchen',16,302,'取食材、零食和饮水的冰箱。'),
+  item('kitchen.fridge','fridge','kitchen',16,302,'取食材、零食和饮水的冰箱。点击可以打开看看里面有什么。',{action:'fridge'}),
   item('kitchen.cabinets','kitchenCabinets','kitchen',49,274,'厨房吊柜，猫咪也喜欢探索这里的高处。',{action:'meal'}),
   item('kitchen.potRack','potRack','kitchen',20,276,'原有的锅、锅铲和挂钩。'),
   item('kitchen.spiceShelf','spiceShelf','kitchen',19,291,'置物架与调料罐。'),
@@ -57,7 +57,9 @@ export const ITEMS = Object.freeze([
   item('collectible.plant','collectible-plant','workspace',73,196,'快递收藏：电脑桌的小盆栽。',{collectible:true}),
   item('collectible.vase','collectible-vase','bathroom',150,211,'快递收藏：洗手台的小花瓶。',{collectible:true}),
 
-  item('actor.human','human','bedroom',146,116,'小屋的主人，按北京时间过着自己的生活。'),
+  // Actor placements are nominal: their runtime positions come from the navigation controller.
+  // The y values keep the (taller) union sprite boxes inside the room bounds.
+  item('actor.human','human','bedroom',146,102,'小屋的主人，按北京时间过着自己的生活。'),
   item('actor.cat','cat','bedroom',17,87,'在三层小屋里自主活动的橘猫。'),
   item('actor.dog','dog','kitchen',118,329,'棕色腊肠狗，喜欢散步、吃饭和跟在主人身边。'),
   item('kitchen.dogBowl','dogBowl','kitchen',112,340,'狗粮碗。吃完会减少，第二天重新补满。'),

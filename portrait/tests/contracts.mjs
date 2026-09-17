@@ -3,10 +3,11 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { CONFIG, ROOMS, PORTALS, GARDEN } from '../js/config.js';
 import { ITEMS, LAMPS, ANCHORS, getVisibleItems } from '../js/layout.js';
-import { ITEM_IDS, ITEM_META, drawItem } from '../js/art/index.js';
+import { ITEM_IDS, ITEM_META, drawItem, resolveItemVariant } from '../js/art/index.js';
+import { SPRITES } from '../js/art/sprites.generated.js';
 import { STORY, SONGS } from '../js/content/index.js';
 import { loadPreferences, savePreferences, resetPreferences } from '../js/store.js';
-import { hitTest, drawScene } from '../js/scene.js';
+import { hitTest, drawScene, propContents, PROP_BOX, PROP_PALETTES } from '../js/scene.js';
 import { NavigationController, NAVIGATION_GEOMETRY } from '../js/navigation.js';
 import { LifeDirector } from '../js/life.js';
 import { PetWorld } from '../js/pets.js';
@@ -71,10 +72,38 @@ const ctx = {globalAlpha:1,save:noop,restore:noop,translate:finite,scale:finite,
 for (const season of ['spring','summer','autumn','winter']) for (const theme of ['day','night']) {
   const state = {...prefs,season,theme};
   for (const id of ITEM_IDS) drawItem(ctx,id,0,0,{season,night:theme==='night',lampOn:true});
+  // Every actor pose variant renders, and all variants share one union box plus a finite anchor.
+  for (const reaction of ['stand','wave0','wave1','wave2','nod0','nod1','startle','lookback','lookup']) drawItem(ctx,'human',0,0,{reaction});
+  drawItem(ctx,'human',0,0,{shower:true});
+  for (const mood of ['idle','pet1','pet2','pet3','pet4','walkaway']) drawItem(ctx,'cat',0,0,{mood});
+  for (const mood of ['sit','bark']) drawItem(ctx,'dog',0,0,{mood});
   drawScene({getContext:()=>ctx},state,{actor:{x:153,y:150,direction:1,walking:false,step:0}});
   assert.ok(getVisibleItems(state).every(i => !i.season || i.season === season));
   const lamp=LAMPS[0]; assert.equal(hitTest(lamp.x,lamp.y,state).id,lamp.id);
   assert.equal(hitTest(0,0,state),null);
+}
+for(const [id,options,expected] of [
+  ['human',{shower:true},'human:shower'],
+  ['human',{reaction:'wave0'},'human:wave0'],
+  ['human',{},'human:stand'],
+  ['cat',{mood:'pet3'},'cat:pet3'],
+  ['cat',{},'cat:idle'],
+  ['dog',{mood:'bark'},'dog:bark'],
+  ['dog',{},'dog:sit']
+]) assert.equal(resolveItemVariant(id,options),expected,id+' '+JSON.stringify(options)+' selects its variant');
+assert.throws(()=>resolveItemVariant('teapot',{}),/Unknown Pixel Room item id/);
+
+const ACTOR_VARIANTS={
+  human:['human:stand','human:wave0','human:wave1','human:wave2','human:nod0','human:nod1','human:startle','human:lookback','human:lookup','human:shower'],
+  cat:['cat:idle','cat:pet1','cat:pet2','cat:pet3','cat:pet4','cat:walkaway'],
+  dog:['dog:sit','dog:bark']
+};
+for(const [actor,variants] of Object.entries(ACTOR_VARIANTS)){
+  const meta=ITEM_META[actor];
+  assert.ok(Number.isFinite(meta.anchorX)&&Number.isFinite(meta.anchorY),actor+' anchor is finite');
+  const sizes=new Set(variants.map(key=>SPRITES[key].width+'x'+SPRITES[key].height));
+  assert.equal(sizes.size,1,actor+' variants share one bounding box, got '+[...sizes].join(' / '));
+  assert.equal(new Set(variants.map(key=>SPRITES[key].anchorX+','+SPRITES[key].anchorY)).size,1,actor+' variants share one anchor');
 }
 assert.ok(!getVisibleItems({...prefs,showCollectibles:false}).some(i=>i.collectible));
 
@@ -83,10 +112,10 @@ const HIT_STATE={...prefs,season:'winter',showCollectibles:true};
 const rectOf=(item)=>{const m=ITEM_META[item.art];return{x0:item.x,x1:item.x+m.width,y0:item.y,y1:item.y+m.height};};
 const inside=(r,x,y)=>x>=r.x0-1&&x<=r.x1+1&&y>=r.y0-1&&y<=r.y1+1;
 const actionIn=(id)=>{const item=ITEMS.find(i=>i.id===id),r=rectOf(item),found=new Set();for(let x=r.x0;x<=r.x1;x++)for(let y=r.y0;y<=r.y1;y++){const hit=hitTest(x,y,HIT_STATE,{});if(hit?.action)found.add(hit.action);}return found;};
-const ACTIONS=new Set(['computer','letters','guitar','wardrobe','name','meal','door']);
+const ACTIONS=new Set(['computer','letters','guitar','wardrobe','fridge','name','meal','door']);
 assert.deepEqual(new Set(ITEMS.filter(i=>i.action).map(i=>i.action)),ACTIONS,'Only classic-equivalent click actions exist');
-assert.equal(ITEMS.filter(i=>i.action).length,15,'Clickable object count stays bounded');
-for(const [id,action] of [['bedroom.wardrobe','wardrobe'],['bedroom.guitar','guitar'],['bedroom.bed','name'],['bedroom.boba','name'],['bedroom.avocado','name'],['bedroom.bunny','name'],['bedroom.orange','name'],['bedroom.octopus','name'],['bedroom.ramen','name'],['workspace.bookshelf','letters'],['workspace.desk','computer'],['kitchen.cabinets','meal'],['kitchen.counter','meal'],['kitchen.table','meal'],['kitchen.door','door']]){
+assert.equal(ITEMS.filter(i=>i.action).length,16,'Clickable object count stays bounded');
+for(const [id,action] of [['bedroom.wardrobe','wardrobe'],['bedroom.guitar','guitar'],['bedroom.bed','name'],['bedroom.boba','name'],['bedroom.avocado','name'],['bedroom.bunny','name'],['bedroom.orange','name'],['bedroom.octopus','name'],['bedroom.ramen','name'],['workspace.bookshelf','letters'],['workspace.desk','computer'],['kitchen.fridge','fridge'],['kitchen.cabinets','meal'],['kitchen.counter','meal'],['kitchen.table','meal'],['kitchen.door','door']]){
   assert.ok(actionIn(id).has(action),id+' exposes '+action);
 }
 // Decorations may sit under a switchable lamp, but they must not open anything themselves.
@@ -140,13 +169,28 @@ at('19:00:00');
   assert.equal(touched.dog.greet(target),'bark');assert.equal(touched.dog.greet(target),'follow','A second touch within four seconds follows');
   assert.equal(touched.dog.state,'follow');assert.equal(touched.frighten(),true);assert.equal(touched.cat.state,'underbed');assert.equal(touched.cat.high,false);
 }
-// Manual guitar and wardrobe keep the horizontal refusal rules.
+// Manual guitar keeps the horizontal refusal rules; washing and showering are off limits too.
 at('20:00:00');{const nav2=makeNav(),life2=new LifeDirector(nav2,world);assert.equal(life2.schedule,'playCat');assert.equal(life2.startGuitar(),'ok');assert.equal(life2.activity,'guitar');assert.equal(life2.startGuitar(),'busy');assert.equal(life2.schedule,'playCat','Manual guitar does not hijack the timetable');}
-at('20:00:00');{const life2=new LifeDirector(makeNav(),world);assert.equal(life2.startChange(),'ok');assert.equal(life2.activity,'change');}
-at('15:00:00');{const life2=new LifeDirector(makeNav(),world);assert.equal(life2.startGuitar(),'ok');assert.equal(life2.startChange(),'later','A manual song during work does not open the wardrobe');}
-at('08:00:00');{const life2=new LifeDirector(makeNav(),world);assert.equal(life2.startChange(),'later','Wardrobe change is an evening leisure entry in the horizontal build');}
-at('03:00:00');{const life2=new LifeDirector(makeNav(),world);life2.setPlan('sleep');assert.equal(life2.startGuitar(),'sleep');assert.equal(life2.startChange(),'sleep');}
-at('21:00:00','2026-09-14');{const nav2=makeNav(),life2=new LifeDirector(nav2,world);assert.equal(life2.schedule,'call');assert.equal(life2.startGuitar(),'call');assert.equal(life2.startChange(),'call');step(nav2,life2,10);assert.equal(nav2.walking,false);assert.equal(life2.pose,'call');assert.equal(life2.snapshot().callLine,life2.snapshot().call.lines[0]);step(nav2,life2,155);assert.equal(life2.snapshot().callLine,life2.snapshot().call.lines[1],'Call line advances every 150 seconds');}
+at('15:00:00');{const life2=new LifeDirector(makeNav(),world);assert.equal(life2.startGuitar(),'ok','Work can be interrupted by a song');}
+at('08:00:00');{const life2=new LifeDirector(makeNav(),world);assert.equal(life2.schedule,'morning');assert.equal(life2.startGuitar(),'wash','The morning wash cannot be interrupted');}
+at('22:10:00');{const life2=new LifeDirector(makeNav(),world);assert.equal(life2.schedule,'shower');assert.equal(life2.startGuitar(),'wash','The shower cannot be interrupted');}
+at('03:00:00');{const life2=new LifeDirector(makeNav(),world);life2.setPlan('sleep');assert.equal(life2.startGuitar(),'sleep');}
+at('21:00:00','2026-09-14');{const nav2=makeNav(),life2=new LifeDirector(nav2,world);assert.equal(life2.schedule,'call');assert.equal(life2.startGuitar(),'call');step(nav2,life2,10);assert.equal(nav2.walking,false);assert.equal(life2.pose,'call');assert.equal(life2.snapshot().callLine,life2.snapshot().call.lines[0]);step(nav2,life2,155);assert.equal(life2.snapshot().callLine,life2.snapshot().call.lines[1],'Call line advances every 150 seconds');}
+// Click responses are posture animations, and sleeping or showering residents stay quiet.
+at('15:00:00');{const life2=new LifeDirector(makeNav(),world);const type=life2.react();assert.ok(['wave','nod','startle','lookback'].includes(type),'Human click picks a horizontal posture');assert.equal(life2.snapshot().reaction,type);assert.equal(life2.react('lookup'),'lookup');life2.reaction=null;life2.pose='sleep';assert.equal(life2.react(),'','Sleeping residents do not react');assert.equal(life2.snapshot().reaction,'');life2.pose='shower';assert.equal(life2.react(),'','Showering residents do not react');assert.equal(life2.snapshot().reaction,'');}
+// Wardrobe and fridge open onto random pixel contents.
+for(const kind of ['wardrobe','fridge']){
+  const first=propContents(kind,7),second=propContents(kind,7),other=propContents(kind,8),box=PROP_BOX[kind],palette=PROP_PALETTES[kind];
+  assert.ok(first.length>=2,kind+' shows contents');
+  assert.deepEqual(first,second,kind+' contents are deterministic per seed');
+  assert.notDeepEqual(first,other,kind+' contents vary with the seed');
+  for(const item of first){
+    assert.ok(palette.includes(item.color),kind+' uses its own palette');
+    assert.ok(item.w>=2&&item.h>=2,kind+' pieces stay pixel sized');
+    assert.ok(item.x>=box.x&&item.y>=box.y&&item.x+item.w<=box.x+box.w&&item.y+item.h<=box.y+box.h,kind+' pieces stay inside the furniture');
+  }
+}
+assert.throws(()=>propContents('oven',1),/Unknown prop/);
 // Navigation continuity through both staircases and the garden, including return.
 const nav=makeNav();for(const [x,y] of [[GARDEN.swingX,GARDEN.swingY],[70,150],[60,248],[100,346]]){nav.moveToPoint(x,y);for(let i=0;i<800&&nav.walking;i++){const before=nav.snapshot();nav.update(.05);assert.ok(Math.hypot(nav.x-before.x,nav.y-before.y)<=2.101);}assert.equal(nav.walking,false);assert.equal(nav.x,x);assert.equal(nav.y,y);}assert.equal(NAVIGATION_GEOMETRY.edges.length,15);
 // The visible high cat must receive the click, without a ghost hit at its old floor.
@@ -164,4 +208,4 @@ const audioPrefs={sound:false,volume:60},sound=new AudioSystem(audioPrefs);asser
 assert.throws(()=>parseLetterFile('image.png','text',STORY.letters.toMomo),/仅支持/);assert.throws(()=>parseLetterFile('a.json','{"paragraphs":[{}]}',STORY.letters.toMomo),/字符串/);
 // Weather success and rejected requests both settle to a usable state.
 const realFetch=globalThis.fetch;for(const [code,kind] of [[0,'clear'],[63,'rain'],[73,'snow'],[95,'storm']]){globalThis.fetch=async()=>({ok:true,json:async()=>({current:{weather_code:code,temperature_2m:23.6,wind_speed_10m:5}})});const env=Object.create(Environment.prototype);env.lastFetch=0;await env.fetch();assert.equal(env.weather.kind,kind);assert.equal(env.weather.source,'api');assert.equal(env.weather.temperature,24);}globalThis.fetch=async()=>{throw Error('offline')};const env=Object.create(Environment.prototype);env.lastFetch=0;await env.fetch();assert.equal(env.weather.source,'fallback');globalThis.fetch=realFetch;globalThis.Date=RealDate;
-console.log('PASS S6: autonomous schedule (10 boundaries), classic click scope (15 targets, decorations inert), pet touch chain and follow, manual guitar/wardrobe rules, call lines, all leisure states, 3 songs, 100 calls, garden routes, lamp modes and fright, letters, world/storage isolation, weather, original content and drawing.');
+console.log('PASS S6: autonomous schedule (10 boundaries), classic click scope (16 targets, decorations inert), opening wardrobe/fridge with random contents, posture click responses, pet touch chain and follow, guitar refusal rules (sleep/call/wash), call lines, all leisure states, 3 songs, 100 calls, garden routes, lamp modes and fright, letters, world/storage isolation, weather, original content and drawing.');

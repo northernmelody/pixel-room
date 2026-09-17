@@ -163,12 +163,58 @@ vm.runInContext(injectRoom(fs.readFileSync(path.join(root, 'js/roomLayout.js'), 
 vm.runInContext(injectBeforeExport(
   fs.readFileSync(path.join(root, 'js/character.js'), 'utf8'),
   '  P.Character = {',
-  `  P.__CharacterArt = { stand(ctx) { drawStand(ctx, 30, 1, { shirt: '#4a7bd0', pants: '#3a3f55' }, 0); } };`
+  `  const PORTRAIT_OUTFIT = { shirt: '#4a7bd0', pants: '#3a3f55' };
+  P.__CharacterArt = {
+    stand(ctx) { drawStand(ctx, 30, 1, PORTRAIT_OUTFIT, 0); },
+    // Horizontal click reactions are posture animations; reuse the original renderer.
+    // The generator never runs Character.init(), so seed just the state it reads.
+    react(ctx, type, t) { if (!char) char = {}; char.react = { type: type, t: 0 }; drawReact(ctx, 30, 1, PORTRAIT_OUTFIT, t); },
+    // Shower body: the horizontal build draws a frosted silhouette, the portrait asks
+    // for a readable underwear-only figure behind the closed glass.
+    shower(ctx) {
+      const hx = 30, d = 1;
+      ctx.fillStyle = SKIN;
+      ctx.fillRect(hx - 4, 106, 8, 12);        // torso
+      ctx.fillRect(hx - 5, 108, 2, 7);         // arms
+      ctx.fillRect(hx + 3, 108, 2, 7);
+      ctx.fillRect(hx - 4, 102, 2, 6);         // hands raised to the hair
+      ctx.fillRect(hx + 3, 102, 2, 6);
+      ctx.fillRect(hx - 4, 121, 3, 7);         // legs
+      ctx.fillRect(hx + 1, 121, 3, 7);
+      ctx.fillStyle = SKIN_SHADOW;
+      ctx.fillRect(hx + 2, 106, 2, 12);
+      ctx.fillRect(hx + 2, 121, 2, 7);
+      ctx.fillStyle = '#7fa8c8';               // underwear
+      ctx.fillRect(hx - 4, 116, 8, 5);
+      ctx.fillStyle = '#5d84a4';
+      ctx.fillRect(hx - 4, 120, 8, 1);
+      ctx.fillStyle = '#3a3028';               // feet
+      ctx.fillRect(hx - 4, 126, 3, 2);
+      ctx.fillRect(hx + 1, 126, 3, 2);
+      drawHead(ctx, hx - 6, 95, d);
+    }
+  };`
 ), sandbox, { filename: 'character.js' });
 vm.runInContext(injectBeforeExport(
   fs.readFileSync(path.join(root, 'js/cat.js'), 'utf8'),
   '  P.Cat = {',
-  `  P.__CatArt = { idle(ctx) { drawCat(ctx, 30, 30, 1, PALETTES[0], 'idle', 0); } };`
+  `  P.__CatArt = {
+    idle(ctx) { drawCat(ctx, 30, 30, 1, PALETTES[0], 'idle', 0); },
+    // Touch chain levels mirror the horizontal build: raised head, hearts, belly, paw out.
+    // The generator never runs Cat.init(), so seed just the state the renderer reads.
+    pet(ctx, level) {
+      if (!cat) cat = {};
+      cat.petLevel = level; cat.state = 'pet';
+      if (level === 3) drawBelly(ctx, 30, 34, PALETTES[0], 0);
+      drawCat(ctx, 30, 30, 1, PALETTES[0], 'pet', 0);
+      if (level >= 2) {
+        ctx.fillStyle = '#ff6a8a';
+        ctx.fillRect(42, 24, 2, 2); ctx.fillRect(45, 24, 2, 2);
+        ctx.fillRect(42, 25, 5, 1); ctx.fillRect(43, 26, 3, 2); ctx.fillRect(44, 27, 1, 1);
+      }
+    },
+    walkaway(ctx) { if (!cat) cat = {}; cat.state = 'walkaway'; drawCat(ctx, 30, 30, 1, PALETTES[0], 'walkaway', 0); }
+  };`
 ), sandbox, { filename: 'cat.js' });
 vm.runInContext(injectBeforeExport(
   fs.readFileSync(path.join(root, 'js/dog.js'), 'utf8'),
@@ -178,6 +224,9 @@ vm.runInContext(injectBeforeExport(
     // same recognizable long body, short legs, floppy ear and muzzle details.
     // The portrait generator crops this drawing into its own sprite.
     drawDogBody(ctx, 30, 40, PALETTES[0], 0, false, 'idle');
+  }, bark(ctx) {
+    // Open mouth plus bark waves, same pose flag as the horizontal build.
+    drawDogBody(ctx, 30, 40, PALETTES[0], 0, false, 'bark');
   } };`
 ), sandbox, { filename: 'dog.js' });
 
@@ -298,9 +347,53 @@ function select(commands, box) {
 for (const id of ['figurine', 'mug', 'painting', 'plant', 'vase']) {
   add(`collectible-${id}`, `收藏品 ${id}`, c => A.collectibles[id](c), { collectible: id });
 }
-add('human', '人物（站立）', c => P.__CharacterArt.stand(c));
-add('cat', '橘猫（静态）', c => P.__CatArt.idle(c));
-add('dog', '腊肠狗（坐姿）', c => P.__DogArt.sit(c));
+// Every variant of one actor shares a union bounding box plus an explicit anchor,
+// derived from the draw offset the scene already uses for the base variant, so a
+// pose change can never shift the actor on screen.
+function boxOf(draw) {
+  const c = recorder(); draw(c);
+  const bs = c.commands.map(boundsOf);
+  return [Math.floor(Math.min(...bs.map(b => b[0]))), Math.floor(Math.min(...bs.map(b => b[1]))), Math.ceil(Math.max(...bs.map(b => b[2]))), Math.ceil(Math.max(...bs.map(b => b[3])))];
+}
+function addActor(variants, baseKey, offset) {
+  const baseBox = boxOf(variants.get(baseKey));
+  const box = [...variants.values()].reduce((union, draw) => {
+    const b = boxOf(draw);
+    return [Math.min(union[0], b[0]), Math.min(union[1], b[1]), Math.max(union[2], b[2]), Math.max(union[3], b[3])];
+  }, [Infinity, Infinity, -Infinity, -Infinity]);
+  const extra = { anchorX: -offset[0] - (box[0] - baseBox[0]), anchorY: -offset[1] - (box[1] - baseBox[1]) };
+  for (const [key, draw] of variants) {
+    add(key, key, ctx => {
+      ctx.fillStyle = 'rgba(0,0,0,0)';
+      ctx.fillRect(box[0], box[1], box[2] - box[0], box[3] - box[1]);
+      draw(ctx);
+    }, extra);
+  }
+}
+addActor(new Map([
+  ['human:stand', c => P.__CharacterArt.stand(c)],
+  ['human:wave0', c => P.__CharacterArt.react(c, 'wave', -Math.PI / 24)],
+  ['human:wave1', c => P.__CharacterArt.react(c, 'wave', 0)],
+  ['human:wave2', c => P.__CharacterArt.react(c, 'wave', Math.PI / 24)],
+  ['human:nod0', c => P.__CharacterArt.react(c, 'nod', -Math.PI / 18)],
+  ['human:nod1', c => P.__CharacterArt.react(c, 'nod', Math.PI / 18)],
+  ['human:startle', c => P.__CharacterArt.react(c, 'startle', 0)],
+  ['human:lookback', c => P.__CharacterArt.react(c, 'lookback', 0)],
+  ['human:lookup', c => P.__CharacterArt.react(c, 'lookup', 0)],
+  ['human:shower', c => P.__CharacterArt.shower(c)]
+]), 'human:stand', [-7, -34]);
+addActor(new Map([
+  ['cat:idle', c => P.__CatArt.idle(c)],
+  ['cat:pet1', c => P.__CatArt.pet(c, 1)],
+  ['cat:pet2', c => P.__CatArt.pet(c, 2)],
+  ['cat:pet3', c => P.__CatArt.pet(c, 3)],
+  ['cat:pet4', c => P.__CatArt.pet(c, 4)],
+  ['cat:walkaway', c => P.__CatArt.walkaway(c)]
+]), 'cat:idle', [-11, -17]);
+addActor(new Map([
+  ['dog:sit', c => P.__DogArt.sit(c)],
+  ['dog:bark', c => P.__DogArt.bark(c)]
+]), 'dog:sit', [-11, -17]);
 
 const output = `// Generated from the original Canvas drawing functions by generate.mjs.\n` +
   `// Do not hand-edit; regenerate after intentional source-art changes.\n` +

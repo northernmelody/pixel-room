@@ -176,19 +176,34 @@ function illumination(ctx,state){
   }
 }
 
-function bubble(ctx,x,y,text){if(!text)return;const width=Math.min(62,Math.max(22,text.length*4+6));rect(ctx,x-width/2,y-11,width,9,'#101923e8');ctx.fillStyle='#f0dfbb';ctx.font='4px "Microsoft YaHei",sans-serif';ctx.textAlign='center';ctx.fillText(text.slice(0,14),x,y-5);ctx.textAlign='start';rect(ctx,x-1,y-2,2,2,'#101923e8');}
+// Click responses are posture animations like the horizontal build, never text bubbles.
+const REACT_FRAMES={wave:3,nod:2,startle:1,lookback:1,lookup:1};
+const reactVariant=(reaction,motion)=>reaction==='wave'?'wave'+Math.floor(motion*8)%3:reaction==='nod'?'nod'+Math.floor(motion*6)%2:reaction;
 function drawActor(ctx,actor){
   const bob=actor.walking?Math.round(Math.abs(Math.sin(actor.step))*1.2):0;
   const swing=actor.pose==='swing',sway=swing?Math.sin(actor.motion*1.8)*3:0;
-  ctx.save();ctx.translate(Math.round(actor.x+sway),Math.round(actor.y));if(actor.direction<0)ctx.scale(-1,1);
+  const reaction=REACT_FRAMES[actor.reaction]?actor.reaction:'';
+  const jitter=reaction==='startle'?Math.round(Math.sin(actor.motion*26)):0;
+  const human=ITEM_META.human;
+  ctx.save();ctx.translate(Math.round(actor.x+sway+jitter),Math.round(actor.y));if(actor.direction<0)ctx.scale(-1,1);
+  if(reaction){
+    // The horizontal build stands the character up for the reaction, then continues.
+    rect(ctx,-7,-1,14,2,'#1d20243d');
+    drawItem(ctx,'human',-human.anchorX,-human.anchorY-bob,{reaction:reactVariant(reaction,actor.motion)});
+    ctx.restore();return;
+  }
   if(actor.pose==='sleep'){
     rect(ctx,-12,-23,10,8,'#e1af87');rect(ctx,-13,-25,11,3,'#574030');rect(ctx,-13,-23,3,6,'#574030');rect(ctx,-8,-19,3,1,'#5c4038');
-    ctx.restore();bubble(ctx,actor.x,actor.y-30,actor.reaction);return;
+    ctx.restore();return;
   }
   const seated=['toilet','read','call','guitar','swing','phone','work','game','eat','eatSnack'].includes(actor.pose)&&!actor.walking;
-  rect(ctx,-7,-1,14,2,'#1d20243d');ctx.save();if(seated){ctx.beginPath();ctx.rect(-16,-40,34,30);ctx.clip();}drawItem(ctx,'human',-7,-34-bob);ctx.restore();
+  const showering=actor.pose==='shower';
+  rect(ctx,-7,-1,14,2,'#1d20243d');ctx.save();if(seated){ctx.beginPath();ctx.rect(-16,-40,34,30);ctx.clip();}drawItem(ctx,'human',-human.anchorX,-human.anchorY-bob,{shower:showering});ctx.restore();
   if(seated){rect(ctx,-5,-11,11,4,'#3f70a9');rect(ctx,3,-8,8,3,'#365f92');rect(ctx,8,-6,3,3,'#3a3028');}
-  if(actor.outfit===1)rect(ctx,-4,-21-bob,8,9,'#c66d42');if(actor.outfit===2)rect(ctx,-4,-21-bob,8,9,'#6e62a8');
+  // The shower sprite is already undressed, so the clothing and held-item overlays stay off.
+  if(!showering){
+    if(actor.outfit===1)rect(ctx,-4,-21-bob,8,9,'#c66d42');if(actor.outfit===2)rect(ctx,-4,-21-bob,8,9,'#6e62a8');
+  }
   if(actor.walking){
     const stride=Math.sin(actor.step*2)>0?1:-1;
     rect(ctx,-4+stride,-10-bob,3,8,'#3f70a9');rect(ctx,1-stride,-10-bob,3,8,'#365f92');
@@ -201,15 +216,36 @@ function drawActor(ctx,actor){
 
   if(['work','game'].includes(actor.pose)){rect(ctx,4,-19,8,2,'#4575ad');rect(ctx,10,-20,2,2,'#e1af87');}
   if(['toilet','read','call','guitar','swing'].includes(actor.pose)){rect(ctx,-6,-11,12,4,'#3f70a9');rect(ctx,3,-8,8,3,'#3a3028');}
-  if(['washHands','brush','shower'].includes(actor.pose)){for(let i=0;i<4;i++)rect(ctx,8+i*2,-25+(i%2)*3,1,3,'#9bd9e5aa');}
+  if(['washHands','brush'].includes(actor.pose)){for(let i=0;i<4;i++)rect(ctx,8+i*2,-25+(i%2)*3,1,3,'#9bd9e5aa');}
   if(actor.pose==='exercise'){const lift=Math.sin(actor.motion*5)>0?0:4;rect(ctx,-10,-24-lift,4,2,'#4575ad');rect(ctx,6,-24-lift,4,2,'#4575ad');}
   if(actor.pose==='guitar'){rect(ctx,-2,-19,10,12,'#8a5429');rect(ctx,7,-23,2,15,'#56351f');}
   if(actor.held==='phone')rect(ctx,8,-23,3,5,'#30465d');if(actor.held==='book')rect(ctx,5,-17,8,5,'#b96b55');if(actor.held==='cup')rect(ctx,8,-18,3,4,'#d8e0df');
   ctx.restore();
-  bubble(ctx,actor.x,actor.y-39,actor.reaction);
 }
 
-function drawLifeProps(ctx,life,world){
+const CLOTH_COLORS=['#c66d42','#6e62a8','#4a7bd0','#7fa8c8','#c94f6d','#e0b352','#6f9b6a','#b46a8a','#3f6f8f','#d98f5a'];
+const FOOD_COLORS=['#dca65d','#7c9b61','#c94f4f','#e8cf77','#e8e0ca','#a9673f','#8fbf6a','#d97f4f','#c9b0d9','#f0e2b8'];
+export const PROP_BOX=Object.freeze({wardrobe:Object.freeze({x:21,y:107,w:12,h:36}),fridge:Object.freeze({x:18,y:305,w:13,h:37})});
+export const PROP_PALETTES=Object.freeze({wardrobe:Object.freeze(CLOTH_COLORS),fridge:Object.freeze(FOOD_COLORS)});
+function propRandom(seed){let s=seed>>>0;return()=>{s=(s+0x6d2b79f5)>>>0;let t=Math.imul(s^s>>>15,1|s);t=(t+Math.imul(t^t>>>7,61|t))^t;return((t^t>>>14)>>>0)/4294967296;};}
+// Random pixel clothing / food shown while the wardrobe or the fridge stands open.
+export function propContents(kind,seed=1){
+  const box=PROP_BOX[kind];if(!box)throw new RangeError('Unknown prop: '+kind);
+  const palette=kind==='wardrobe'?CLOTH_COLORS:FOOD_COLORS,rand=propRandom(seed),items=[];
+  const size=kind==='wardrobe'?[4,6]:[4,3];
+  for(let row=0;row<4;row++){
+    const slots=1+Math.floor(rand()*2);
+    for(let slot=0;slot<slots;slot++){
+      const w=size[0],h=size[1],x=Math.round(box.x+1+slot*(w+2)),y=Math.round(box.y+2+row*(h+2));
+      if(x+w>box.x+box.w||y+h>box.y+box.h)continue;
+      items.push({x,y,w,h,color:palette[Math.floor(rand()*palette.length)]});
+    }
+  }
+  return items;
+}
+function drawPropContents(ctx,items){for(const item of items||[]){rect(ctx,item.x,item.y,item.w,item.h,item.color);rect(ctx,item.x,item.y,item.w,1,'#ffffff2e');}}
+
+function drawLifeProps(ctx,life,world,props){
   if(!life)return;
   if(life.phase==='fridge'){
     rect(ctx,17,303,14,40,'#25343a');rect(ctx,19,307,10,2,'#bad5c8');rect(ctx,20,317,8,2,'#d4b674');
@@ -226,28 +262,50 @@ function drawLifeProps(ctx,life,world){
   if(life.pose==='cook'){rect(ctx,61,309,11,2,'#282b30');rect(ctx,63,307,7,2,'#747a78');const drift=Math.floor(life.motion*5)%5;rect(ctx,64,305-drift,1,2,'#e8e0ca99');rect(ctx,68,302-((drift+2)%5),1,2,'#e8e0ca88');}
   if(['eat','eatSnack'].includes(life.pose)){rect(ctx,98,321,12,2,'#e8e8ec');rect(ctx,100,320,8,2,life.meal?.type==='noodles'?'#e8cf77':'#dca65d');}
   if(['wardrobe','change'].includes(life.pose)){rect(ctx,20,97,13,40,'#3d2b24');rect(ctx,9,96,11,44,'#9a633a');rect(ctx,33,96,11,44,'#794a2f');}
-  if(life.pose==='shower'){for(let i=0;i<9;i++)rect(ctx,116+(i%3)*4,185+(i*5+Math.floor(life.motion*18))%50,1,4,'#a9e3ec99');}
+  if(life.pose==='shower'){/* water and the closed glass are drawn in front of the actor */}
   if(life.pose==='door')rect(ctx,166,281,21,69,'#6d472e');
+  // Clicking the furniture opens it: the doors swing out and the interior shows what is inside.
+  if(props?.wardrobe?.open){
+    rect(ctx,20,97,13,50,'#3d2b24');rect(ctx,20,97,13,1,'#5a4436');drawPropContents(ctx,props.wardrobe.items);
+    rect(ctx,9,96,11,44,'#9a633a');rect(ctx,33,96,11,44,'#794a2f');rect(ctx,17,100,3,3,'#d8c9a8');rect(ctx,33,100,3,3,'#d8c9a8');
+  }
+  if(props?.fridge?.open){
+    rect(ctx,17,303,14,40,'#25343a');rect(ctx,18,305,12,1,'#39474d');drawPropContents(ctx,props.fridge.items);
+    rect(ctx,31,303,10,40,'#91aa8d');rect(ctx,39,318,3,4,'#5f7361');
+  }
+}
+
+// Front layer: the shower door closes in front of the bather, with the water inside the cabin.
+function drawFrontProps(ctx,life){
+  if(life?.pose!=='shower')return;
+  for(let i=0;i<9;i++)rect(ctx,116+(i%3)*4,185+(i*5+Math.floor(life.motion*18))%50,1,4,'#a9e3ec99');
+  rect(ctx,111,179,21,66,'#bfe4ee3a');
+  rect(ctx,110,178,23,2,'#d7eef4b0');
+  rect(ctx,110,178,2,68,'#d7eef4a0');rect(ctx,131,178,2,68,'#d7eef4a0');
+  rect(ctx,129,207,2,8,'#e8f6f9cc');
 }
 
 function petY(pet){return pet.y-(pet.high&&pet.kind==='cat'?32:0)+(pet.state==='underbed'?7:0);}
-function drawPet(ctx,pet){if(!pet)return;let y=petY(pet);const bob=pet.walking?Math.abs(Math.sin(pet.motion*7))*1.3:0;ctx.save();ctx.translate(Math.round(pet.x),Math.round(y-bob));if(pet.direction<0)ctx.scale(-1,1);drawItem(ctx,pet.kind,pet.kind==='cat'?-11:-11,pet.kind==='cat'?-17:-17);if(pet.state==='sleep'){rect(ctx,-8,-8,16,5,'#8b5a2b88');}ctx.restore();bubble(ctx,pet.x,y-22,pet.reaction);}
+// Pets answer clicks with the horizontal build's pose set, not with text.
+function petMood(pet){if(pet.kind!=='cat')return pet.state==='bark'?'bark':'sit';if(pet.state==='pet')return 'pet'+Math.min(4,Math.max(1,pet.petLevel||1));if(pet.state==='walkaway')return 'walkaway';return 'idle';}
+function drawPet(ctx,pet){if(!pet)return;let y=petY(pet);const bob=pet.walking?Math.abs(Math.sin(pet.motion*7))*1.3:0,meta=ITEM_META[pet.kind];ctx.save();ctx.translate(Math.round(pet.x),Math.round(y-bob));if(pet.direction<0)ctx.scale(-1,1);drawItem(ctx,pet.kind,-meta.anchorX,-meta.anchorY,{mood:petMood(pet)});if(pet.state==='sleep'){rect(ctx,-8,-8,16,5,'#8b5a2b88');}ctx.restore();}
 function weatherEffects(ctx,state,weather){if(!state.particles||!weather)return;const t=Date.now()/90;if(weather.kind==='rain'||weather.kind==='storm')for(let i=0;i<44;i++){const x=(i*37+t)%216,y=(i*53+t*2)%CONFIG.height;line(ctx,x,y,x-2,y+5,'#a8c9de88');}if(weather.kind==='snow')for(let i=0;i<35;i++){const x=(i*41+t*.25)%216,y=(i*47+t*.5)%CONFIG.height;rect(ctx,x,y,1,1,'#eef6f0cc');}if(weather.kind==='storm'&&Math.floor(Date.now()/1200)%9===0)rect(ctx,0,0,CONFIG.width,CONFIG.height,'#d9e7ff44');}
 function ambientObjects(ctx,state){if(state.detail===false)return;const t=Date.now()/180;if(state.season==='summer'){const cx=20,cy=180;for(let i=0;i<4;i++){const a=t+i*Math.PI/2;line(ctx,cx,cy,cx+Math.cos(a)*5,cy+Math.sin(a)*5,'#88939a');}const kx=97,ky=309;line(ctx,kx,ky,kx+Math.cos(t)*3,ky+Math.sin(t)*3,'#adb3b5');}if(state.season==='winter'){for(let i=0;i<4;i++)rect(ctx,94+(i%2)*3,225-((t+i*4)%13),1,3,'#e8f1ef77');}}
 
 export function drawScene(canvas,state,runtime={}){
   const ctx=canvas.getContext('2d');
   ctx.setTransform(CONFIG.pixel,0,0,CONFIG.pixel,0,0);ctx.imageSmoothingEnabled=false;
-  const {actor,life,pets,world,weather}=runtime;sky(ctx,state);shell(ctx,state);stairs(ctx);garden(ctx,state,actor);
+  const {actor,life,pets,world,weather,props}=runtime;sky(ctx,state);shell(ctx,state);stairs(ctx);garden(ctx,state,actor);
   const hour=runtime.time?.hour??12,options={night:state.theme==='night',season:state.season,blanket:hour>=22||hour<8?'cover':hour<10?'made':'messy',cup:hour<12?4:hour<18?2:0,bowl:world?.bowls?.cat??3,dogBowl:world?.bowls?.dog??3};
   for(const item of getVisibleItems(state,world).filter(item=>!['actor.human','actor.cat','actor.dog'].includes(item.id)).filter(item=>item.id!=='bedroom.guitar'||life?.held!=='guitar').filter(item=>item.id!=='kitchen.package'||world?.pkg?.state==='arrived')){
     if(!ITEM_META[item.art])throw new Error('Missing original art: '+item.art);
     drawItem(ctx,item.art,item.x,item.y,{...options,...item.options,lampOn:item.lampIndex!==undefined?state.lamps[item.lampIndex]:true});
   }
-  drawLifeProps(ctx,life||{},world);
+  drawLifeProps(ctx,life||{},world,props);
   ambientObjects(ctx,state);
   if(actor)drawActor(ctx,actor);
   drawPet(ctx,pets?.cat);drawPet(ctx,pets?.dog);
+  drawFrontProps(ctx,life);
   LAMPS.filter(l=>l.kind==='ceiling').forEach((lamp,i)=>ceilingLamp(ctx,lamp,state.lamps[i]));
   illumination(ctx,state);
   weatherEffects(ctx,state,weather);

@@ -24,11 +24,14 @@ const hintOf=w=>{const el=w.document.querySelector('#item-hint');return el.class
 const dialogOpen=w=>w.document.querySelector('dialog').open;
 const dialogTitle=w=>w.document.querySelector('#details-title')?.textContent||'';
 const closeDialog=w=>{const d=w.document.querySelector('dialog');if(d.open)d.close();};
-const lifeCore=p=>JSON.stringify({life:{...p.life,reaction:''},timer:p.diagnostics.timer,index:p.diagnostics.index});
+const lifeCore=p=>JSON.stringify({life:{...p.life,reaction:'',reactionT:0},timer:p.diagnostics.timer,index:p.diagnostics.index});
 const route=p=>JSON.stringify({...p.actor,reaction:''});
 const petY=(v,kind)=>v.y-(v.high&&kind==='cat'?32:0)+(v.state==='underbed'?7:0);
 
-document.querySelector('#run').onclick=async()=>{results.textContent='';const reactions={human:0,cat:0,dog:0};try{// 1. Autonomous timetable boundaries on a pinned Beijing date (Thursday profile).
+document.querySelector('#run').onclick=async()=>{results.textContent='';
+// Start from a fresh visitor: the test page shares the app origin, so clear saved preferences.
+localStorage.clear();
+const reactions={human:0,cat:0,dog:0};try{// 1. Autonomous timetable boundaries on a pinned Beijing date (Thursday profile).
 for(const [time,expected] of [['07:19:55','sleep'],['07:44:55','dress'],['11:59:55','work'],['18:59:55','dinner']]){
   const w=await load('?d=2026-09-17&t='+time);
   check(w.PortraitPreview.life.schedule===expected,time+' -> '+w.PortraitPreview.life.schedule);
@@ -60,8 +63,8 @@ for(const time of ['15:00:00','20:00:00']){
 }
 // 3. Click scope: decorations, appliances and the swing stay inert; only classic entries answer.
 {
-  const w=await load('?d=2026-09-17&t=15:00');
-  for(const id of ['bedroom.rug','bedroom.window','kitchen.fridge','kitchen.dogBowl','bathroom.toilet','bedroom.clock']){
+  const w=await load('?d=2026-09-17&t=15:00'),p=w.PortraitPreview;
+  for(const id of ['bedroom.rug','bedroom.window','kitchen.catBowl','bathroom.toilet','bedroom.clock','kitchen.spiceShelf']){
     clickAt(w,...centerOf(id));await sleep(30);
     check(!dialogOpen(w),id+' opened a dialog');check(!hintOf(w),id+' showed a hint');
   }
@@ -79,23 +82,50 @@ for(const time of ['15:00:00','20:00:00']){
   clickAt(w,...pointFor(w,'workspace.bookshelf'));await sleep(60);
   check(dialogOpen(w),'Letters open');check(w.document.querySelectorAll('#details-content button').length===2,'Two letters offered');closeDialog(w);await sleep(30);
   report('PASS 玩偶名称/餐食/木门提示，电脑六频道与两封信入口');
+  // Clicking the furniture opens it onto random pixel contents.
+  const before=p.life.activity;
+  clickAt(w,...pointFor(w,'bedroom.wardrobe'));await sleep(60);
+  check(p.props.wardrobe.open,'Wardrobe opens');check(p.props.wardrobe.items.length>=2,'Wardrobe shows clothes: '+p.props.wardrobe.items.length);
+  check(p.life.activity===before,'Opening the wardrobe does not start a change');
+  clickAt(w,...pointFor(w,'kitchen.fridge'));await sleep(60);
+  check(p.props.fridge.open,'Fridge opens');check(p.props.fridge.items.length>=2,'Fridge shows food: '+p.props.fridge.items.length);
+  check(!dialogOpen(w),'Furniture opens without a dialog');
+  report('PASS 衣柜与冰箱点击打开并显示随机像素内容');
 }
-// 4. Manual guitar and wardrobe keep the horizontal rules.
+// 4. Manual guitar keeps the horizontal refusal rules; posture responses, no text bubbles.
 {
   const w=await load('?d=2026-09-17&t=15:00'),p=w.PortraitPreview;
   clickAt(w,...pointFor(w,'bedroom.guitar'));await sleep(80);
   check(p.life.activity==='guitar','Guitar click starts a song, got '+p.life.activity);
   clickAt(w,...pointFor(w,'bedroom.guitar'));await sleep(40);
   check(hintOf(w).includes('正在弹'),'Playing again is refused');
-  clickAt(w,...pointFor(w,'bedroom.wardrobe'));await sleep(40);
-  check(hintOf(w).includes('晚上'),'Wardrobe change is refused outside the evening');
-  const w2=await load('?d=2026-09-17&t=20:00'),p2=w2.PortraitPreview;
-  check(p2.life.schedule==='playCat','Evening leisure window, got '+p2.life.schedule);
-  clickAt(w2,...pointFor(w2,'bedroom.wardrobe'));await sleep(80);
-  check(p2.life.activity==='change','Evening wardrobe click changes clothes, got '+p2.life.activity);
-  report('PASS 点击吉他弹唱、晚间点击衣柜换衣，白天与忙碌时给出提示');
+  const w2=await load('?d=2026-09-17&t=08:00'),p2=w2.PortraitPreview;
+  check(p2.life.schedule==='morning','Morning wash window, got '+p2.life.schedule);
+  clickAt(w2,...pointFor(w2,'bedroom.guitar'));await sleep(60);
+  check(hintOf(w2).includes('洗漱'),'The wash cannot be interrupted');
+  check(p2.life.activity==='morning','A refused click leaves the timetable alone');
+  report('PASS 吉他可在工作与休闲时弹唱，洗漱时拒绝');
 }
-// 5. Rapid lamp switching frightens the cat, with the horizontal cooldown shape.
+// 5. Click responses are posture animations like the horizontal build.
+{
+  const w=await load('?d=2026-09-17&t=15:00'),p=w.PortraitPreview;
+  const seen=new Set();
+  for(let i=0;i<26;i++){
+    clickAt(w,p.actor.x,p.actor.y-20);
+    const reaction=p.life.reaction;seen.add(reaction);
+    check(!w.document.querySelector('#item-hint').classList.contains('visible'),'Human response shows no text hint');
+    check(!!reaction,'Human click answers with a posture');
+    await sleep(90);
+  }
+  check([...seen].every(type=>['wave','nod','startle','lookback'].includes(type)),'Only horizontal postures are used: '+[...seen].join(','));
+  for(const kind of ['cat','dog']){
+    const pet=p.pets[kind];
+    clickAt(w,pet.x,petY(pet,kind)-12);await sleep(90);
+    check(!w.document.querySelector('#item-hint').classList.contains('visible'),kind+' response shows no text hint');
+  }
+  report('PASS 点击回应改为横版姿势，无文字气泡');
+}
+// 6. Rapid lamp switching frightens the cat, with the horizontal cooldown shape.
 {
   const w=await load('?d=2026-09-17&t=20:00'),p=w.PortraitPreview;
   for(let i=0;i<3;i++){clickAt(w,LAMPS[i].x,LAMPS[i].y);await sleep(90);}
@@ -103,7 +133,7 @@ for(const time of ['15:00:00','20:00:00']){
   check(p.pets.cat.state==='underbed','The cat hides under the bed, got '+p.pets.cat.state);
   report('PASS 连续闪灯三次后猫躲进床底');
 }
-// 6. MOMO call card: only during the call, and it opens the full record.
+// 7. MOMO call card: only during the call, and it opens the full record.
 {
   const w=await load('?d=2026-09-14&t=21:00'),p=w.PortraitPreview,card=w.document.querySelector('#call-card');
   check(p.life.schedule==='call','Monday call window, got '+p.life.schedule);
@@ -116,6 +146,21 @@ for(const time of ['15:00:00','20:00:00']){
   const w2=await load('?d=2026-09-14&t=15:00');
   check(w2.document.querySelector('#call-card').hidden,'Call card is hidden outside the call');
   report('PASS 通话卡片只在通话期间出现，点击可读完整记录');
+}
+// 8. Branding, hidden in-page entries and the sound default.
+{
+  const w=await load('?d=2026-09-17&t=15:00');
+  check(w.document.title.includes('Still here'),'Page title uses the new name: '+w.document.title);
+  check(/STILL HERE/.test(w.document.querySelector('.brand').textContent),'Brand uses the new name');
+  check(!w.document.querySelector('.switch-link'),'The horizontal entry link is hidden');
+  check(!w.document.querySelector('.back-link'),'The in-page back link is hidden');
+  check(w.PortraitPreview.state.sound===true,'Sound defaults to on');
+  w.document.querySelector('#house-menu').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));await sleep(40);
+  const buttons=[...w.document.querySelectorAll('#details-content button')].map(button=>button.textContent);
+  check(buttons.some(text=>text.includes('声音')),'The house menu still switches sound');
+  check(!w.document.querySelectorAll('#details-content a').length,'The settings link left the page');
+  check(w.document.querySelector('dialog').open,'House menu opened');
+  report('PASS 品牌改为 Still here，页内设置与横版入口已隐藏，声音默认开启');
 }
 check(errors.length===0,errors.join('\n'));
 check(Object.values(reactions).every(n=>n>0),'Each resident responds: '+JSON.stringify(reactions));

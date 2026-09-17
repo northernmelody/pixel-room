@@ -5,7 +5,7 @@ export function beijingNow(date=new Date()) {
   return {year:d.getUTCFullYear(),month:d.getUTCMonth()+1,day:d.getUTCDate(),weekday:d.getUTCDay(),hour:d.getUTCHours(),min:d.getUTCMinutes(),sec:d.getUTCSeconds(),date:d};
 }
 export function seasonFor(month){return month>=3&&month<=5?'spring':month>=6&&month<=8?'summer':month>=9&&month<=11?'autumn':'winter';}
-function defaults(){return {v:2,theme:'auto',season:'auto',lampMode:'auto',lamps:[false,true,true,true,true,true],showCollectibles:false,sound:false,volume:60,particles:true,stars:true,detail:true};}
+function defaults(){return {v:2,theme:'auto',season:'auto',lampMode:'auto',lamps:[false,true,true,true,true,true],showCollectibles:false,sound:true,volume:60,particles:true,stars:true,detail:true};}
 export function resolvePreferences(state,now=beijingNow()){
   const theme=state.theme==='auto'?(now.hour>=7&&now.hour<19?'day':'night'):state.theme,lamps=state.lampMode==='auto'?(theme==='day'?[false,false,false,false,false,false]:now.hour>=23||now.hour<7?[false,false,false,false,false,true]:[false,true,true,true,true,true]):state.lamps;
   return {...state,theme,lamps,season:state.season==='auto'?seasonFor(now.month):state.season};
