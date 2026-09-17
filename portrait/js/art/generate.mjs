@@ -173,7 +173,33 @@ vm.runInContext(injectBeforeExport(
 vm.runInContext(injectBeforeExport(
   fs.readFileSync(path.join(root, 'js/dog.js'), 'utf8'),
   '  P.Dog = {',
-  `  P.__DogArt = { sit(ctx) { drawDogSit(ctx, 30, 40, PALETTES[0], 0); } };`
+  `  P.__DogArt = { sit(ctx) {
+    // The portrait sprite uses a compact pixel silhouette, so keep the original
+    // palette and semantics while giving the dachshund a more recognizable,
+    // elongated body. This is portrait-only; the horizontal art stays intact.
+    ctx.fillStyle = '#8B5A2B';
+    ctx.fillRect(2, 8, 19, 7);   // long body
+    ctx.fillRect(0, 10, 4, 4);   // tail
+    ctx.fillRect(19, 6, 8, 7);   // neck and head
+    ctx.fillRect(21, 3, 4, 4);   // ear
+    ctx.fillStyle = '#C49A6C';
+    ctx.fillRect(5, 12, 13, 2);   // belly highlight
+    ctx.fillStyle = '#5C3A1E';
+    ctx.fillRect(4, 14, 3, 4);    // rear leg
+    ctx.fillRect(16, 14, 3, 4);   // front leg
+    ctx.fillRect(3, 17, 4, 1);
+    ctx.fillRect(16, 17, 4, 1);
+    ctx.fillRect(22, 4, 2, 2);    // ear detail
+    ctx.fillStyle = '#1A1A1A';
+    ctx.fillRect(24, 7, 2, 2);    // eye
+    ctx.fillRect(26, 9, 2, 2);    // nose
+    ctx.fillStyle = '#3a2418';
+    ctx.fillRect(20, 12, 3, 1);   // muzzle shadow
+    ctx.fillStyle = '#cc3333';
+    ctx.fillRect(19, 12, 2, 1);   // collar
+    ctx.fillStyle = '#ffd05a';
+    ctx.fillRect(21, 13, 1, 1);
+  } };`
 ), sandbox, { filename: 'dog.js' });
 
 const P = sandbox.PixelRoom;
