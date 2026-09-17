@@ -382,3 +382,5 @@ Preview: http://127.0.0.1:8138/portrait/
 127.0.0.1 - - [17/Sep/2026 18:50:59] "GET /portrait/js/time.js HTTP/1.1" 200 -
 127.0.0.1 - - [17/Sep/2026 18:50:59] "GET /portrait/js/content/index.js HTTP/1.1" 200 -
 127.0.0.1 - - [17/Sep/2026 18:50:59] "GET /portrait/js/art/sprites.generated.js HTTP/1.1" 200 -
+127.0.0.1 - - [17/Sep/2026 20:22:32] "GET /portrait/assets/audio/cat.wav HTTP/1.1" 200 -
+127.0.0.1 - - [17/Sep/2026 20:22:32] "GET /portrait/assets/audio/dog.wav HTTP/1.1" 200 -
