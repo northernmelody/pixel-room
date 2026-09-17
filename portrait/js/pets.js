@@ -6,10 +6,16 @@ const DOG_LABELS={idle:'守着小屋',wander:'在屋里散步',sleep:'回狗窝�
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 class Pet{
-  constructor(kind,world){this.kind=kind;this.world=world;this.nav=new NavigationController(()=>{},{storageKey:null,x:kind==='cat'?28:128,y:kind==='cat'?150:346,speed:kind==='cat'?30:27});this.state='idle';this.timer=rand(2,5);this.motion=0;this.reaction=null;this.high=false;}
+  constructor(kind,world){this.kind=kind;this.world=world;this.nav=new NavigationController(()=>{},{storageKey:null,x:kind==='cat'?28:128,y:kind==='cat'?150:346,speed:kind==='cat'?30:27});this.state='idle';this.timer=rand(2,5);this.motion=0;this.reaction=null;this.high=false;this.chain=0;this.chainAt=0;this.barkAt=0;}
   get labels(){return this.kind==='cat'?CAT_LABELS:DOG_LABELS;}
   snapshot(){return {...this.nav.snapshot(),kind:this.kind,state:this.state,label:this.labels[this.state]||'在屋里休息',motion:this.motion,reaction:this.reaction?.text||'',high:this.high};}
-  react(){const choices=this.kind==='cat'?['耳朵轻轻动了一下','尾巴弯成了问号','喵了一声回应你','眯起眼睛呼噜呼噜']:['尾巴摇得更快了','轻轻汪了一声','抬头看着你','开心地眨眨眼'];this.reaction={text:choices[Math.floor(Math.random()*choices.length)],timer:1.5};if(this.kind==='cat'){this.world.petToday++;this.world.petTotal++;saveWorld(this.world);}}
+  react(text=''){const choices=this.kind==='cat'?['耳朵轻轻动了一下','尾巴弯成了问号','喵了一声回应你','眯起眼睛呼噜呼噜']:['尾巴摇得更快了','轻轻汪了一声','抬头看着你','开心地眨眨眼'];this.reaction={text:text||choices[Math.floor(Math.random()*choices.length)],timer:1.5};if(this.kind==='cat'){this.world.petToday++;this.world.petTotal++;saveWorld(this.world);}}
+  // Horizontal-build cat: raising a paw on the fourth touch sends it away.
+  pet(){const t=Date.now()/1000;this.chain=t-this.chainAt<=3?this.chain+1:1;this.chainAt=t;if(this.high)this.high=false;if(this.state==='underbed')this.state='idle';if(this.state==='sleep'){this.react('睡梦里蹭了蹭你的手');return 'sleep';}if(this.chain>=4){this.chain=0;this.go(this.nav.snapshot().floor,Math.max(24,Math.min(160,this.nav.x+(this.nav.x<108?46:-46))),'wander',rand(4,7));this.react('伸出爪子，然后走开了');return 'walkaway';}this.react(['抬头叫了一声','凑过来蹭你的手','翻过身露出肚皮'][this.chain-1]);return this.chain>=3?'flop':'pet';}
+  // Horizontal-build dog: first touch barks, a second touch within four seconds follows.
+  greet(actor){const t=Date.now()/1000;if(actor&&t-this.barkAt<=4){this.barkAt=0;this.go(actor.floor,Math.max(24,Math.min(160,actor.x-13)),'follow',10);this.react('悄悄跟上了你');return 'follow';}this.barkAt=t;this.go(this.nav.snapshot().floor,this.nav.x,'bark',2);this.react('轻轻汪了一声');return 'bark';}
+  // Frightened cat runs for the bed; used by rapid lamp switching.
+  frighten(){this.chain=0;this.high=false;this.go(2,62,'underbed',rand(8,15));this.react('被灯光吓了一跳，躲到床底');return true;}
   go(floor,x,state,duration){this.high=false;this.state=state;this.nav.speed=state==='zoomies'?60:this.kind==='cat'?30:27;this.timer=duration;this.nav.moveTo(floor,x);}
   choose(actor,life){
     if(this.kind==='cat'){
@@ -32,5 +38,6 @@ export class PetWorld{
   constructor(world){this.cat=new Pet('cat',world);this.dog=new Pet('dog',world);}
   update(dt,actor,life){this.cat.update(dt,actor,life);this.dog.update(dt,actor,life);}
   snapshots(){return {cat:this.cat.snapshot(),dog:this.dog.snapshot()};}
-  interact(kind){this[kind]?.react();}
+  interact(kind,actor){return kind==='cat'?this.cat.pet():kind==='dog'?this.dog.greet(actor):'';}
+  frighten(){return this.cat.frighten();}
 }

@@ -235,7 +235,7 @@ function drawPet(ctx,pet){if(!pet)return;let y=petY(pet);const bob=pet.walking?M
 function weatherEffects(ctx,state,weather){if(!state.particles||!weather)return;const t=Date.now()/90;if(weather.kind==='rain'||weather.kind==='storm')for(let i=0;i<44;i++){const x=(i*37+t)%216,y=(i*53+t*2)%CONFIG.height;line(ctx,x,y,x-2,y+5,'#a8c9de88');}if(weather.kind==='snow')for(let i=0;i<35;i++){const x=(i*41+t*.25)%216,y=(i*47+t*.5)%CONFIG.height;rect(ctx,x,y,1,1,'#eef6f0cc');}if(weather.kind==='storm'&&Math.floor(Date.now()/1200)%9===0)rect(ctx,0,0,CONFIG.width,CONFIG.height,'#d9e7ff44');}
 function ambientObjects(ctx,state){if(state.detail===false)return;const t=Date.now()/180;if(state.season==='summer'){const cx=20,cy=180;for(let i=0;i<4;i++){const a=t+i*Math.PI/2;line(ctx,cx,cy,cx+Math.cos(a)*5,cy+Math.sin(a)*5,'#88939a');}const kx=97,ky=309;line(ctx,kx,ky,kx+Math.cos(t)*3,ky+Math.sin(t)*3,'#adb3b5');}if(state.season==='winter'){for(let i=0;i<4;i++)rect(ctx,94+(i%2)*3,225-((t+i*4)%13),1,3,'#e8f1ef77');}}
 
-export function drawScene(canvas,state,selectedId=null,runtime={}){
+export function drawScene(canvas,state,runtime={}){
   const ctx=canvas.getContext('2d');
   ctx.setTransform(CONFIG.pixel,0,0,CONFIG.pixel,0,0);ctx.imageSmoothingEnabled=false;
   const {actor,life,pets,world,weather}=runtime;sky(ctx,state);shell(ctx,state);stairs(ctx);garden(ctx,state,actor);
@@ -255,10 +255,6 @@ export function drawScene(canvas,state,selectedId=null,runtime={}){
   if(state.theme==='night'){
     const g=ctx.createRadialGradient(193,329,0,193,329,18);g.addColorStop(0,'#f3c27524');g.addColorStop(1,'#f3c27500');ctx.fillStyle=g;ctx.fillRect(175,308,32,37);
   }
-  if(selectedId){
-    const item=getVisibleItems(state,world).find(i=>i.id===selectedId);
-    if(item){const meta=ITEM_META[item.art];ctx.strokeStyle='#f8dca0';ctx.lineWidth=1;ctx.setLineDash([2,2]);ctx.strokeRect(item.x-2.5,item.y-2.5,meta.width+5,meta.height+5);ctx.setLineDash([]);}
-  }
 }
 
 export function hitTest(x,y,state,runtime={}){
@@ -266,6 +262,7 @@ export function hitTest(x,y,state,runtime={}){
   const actor=runtime.actor,pets=runtime.pets;if(actor&&x>=actor.x-9&&x<=actor.x+9&&y>=actor.y-38&&y<=actor.y+3)return{type:'entity',entity:'human',label:'小人'};
   for(const kind of ['cat','dog']){const pet=pets?.[kind];if(pet&&x>=pet.x-13&&x<=pet.x+13&&y>=petY(pet)-24&&y<=petY(pet)+4)return{type:'entity',entity:kind,label:kind==='cat'?'橘猫':'腊肠狗'};}
   const lamp=LAMPS.find(l=>Math.abs(l.x-x)<7&&Math.abs(l.y-y)<7);if(lamp)return{type:'lamp',...lamp};
-  if(x>=GARDEN.swingX-32&&x<=GARDEN.swingX+32&&y>=GARDEN.swingY-42&&y<=GARDEN.swingY+5)return{type:'swing',label:'庭院秋千'};
-  return getVisibleItems(state,runtime.world).filter(item=>!['actor.human','actor.cat','actor.dog'].includes(item.id)).filter(item=>item.id!=='kitchen.package'||runtime.world?.pkg?.state==='arrived').slice().reverse().find(item=>{const m=ITEM_META[item.art];return x>=item.x-1&&x<=item.x+m.width+1&&y>=item.y-1&&y<=item.y+m.height+1;})||null;
+  // Click scope is limited to the horizontal-build interactions: decorations, windows,
+  // rugs, appliances and pet props are inert and have no hover target.
+  return getVisibleItems(state,runtime.world).filter(item=>item.action).filter(item=>!['actor.human','actor.cat','actor.dog'].includes(item.id)).slice().reverse().find(item=>{const m=ITEM_META[item.art];return x>=item.x-1&&x<=item.x+m.width+1&&y>=item.y-1&&y<=item.y+m.height+1;})||null;
 }

@@ -71,12 +71,38 @@ const ctx = {globalAlpha:1,save:noop,restore:noop,translate:finite,scale:finite,
 for (const season of ['spring','summer','autumn','winter']) for (const theme of ['day','night']) {
   const state = {...prefs,season,theme};
   for (const id of ITEM_IDS) drawItem(ctx,id,0,0,{season,night:theme==='night',lampOn:true});
-  drawScene({getContext:()=>ctx},state,null,{actor:{x:153,y:150,direction:1,walking:false,step:0}});
+  drawScene({getContext:()=>ctx},state,{actor:{x:153,y:150,direction:1,walking:false,step:0}});
   assert.ok(getVisibleItems(state).every(i => !i.season || i.season === season));
   const lamp=LAMPS[0]; assert.equal(hitTest(lamp.x,lamp.y,state).id,lamp.id);
   assert.equal(hitTest(0,0,state),null);
 }
 assert.ok(!getVisibleItems({...prefs,showCollectibles:false}).some(i=>i.collectible));
+
+// Click scope: only the horizontal-build interactions are targets; everything else is inert.
+const HIT_STATE={...prefs,season:'winter',showCollectibles:true};
+const rectOf=(item)=>{const m=ITEM_META[item.art];return{x0:item.x,x1:item.x+m.width,y0:item.y,y1:item.y+m.height};};
+const inside=(r,x,y)=>x>=r.x0-1&&x<=r.x1+1&&y>=r.y0-1&&y<=r.y1+1;
+const actionIn=(id)=>{const item=ITEMS.find(i=>i.id===id),r=rectOf(item),found=new Set();for(let x=r.x0;x<=r.x1;x++)for(let y=r.y0;y<=r.y1;y++){const hit=hitTest(x,y,HIT_STATE,{});if(hit?.action)found.add(hit.action);}return found;};
+const ACTIONS=new Set(['computer','letters','guitar','wardrobe','name','meal','door']);
+assert.deepEqual(new Set(ITEMS.filter(i=>i.action).map(i=>i.action)),ACTIONS,'Only classic-equivalent click actions exist');
+assert.equal(ITEMS.filter(i=>i.action).length,15,'Clickable object count stays bounded');
+for(const [id,action] of [['bedroom.wardrobe','wardrobe'],['bedroom.guitar','guitar'],['bedroom.bed','name'],['bedroom.boba','name'],['bedroom.avocado','name'],['bedroom.bunny','name'],['bedroom.orange','name'],['bedroom.octopus','name'],['bedroom.ramen','name'],['workspace.bookshelf','letters'],['workspace.desk','computer'],['kitchen.cabinets','meal'],['kitchen.counter','meal'],['kitchen.table','meal'],['kitchen.door','door']]){
+  assert.ok(actionIn(id).has(action),id+' exposes '+action);
+}
+// Decorations may sit under a switchable lamp, but they must not open anything themselves.
+const actionableRects=ITEMS.filter(i=>i.action).map(rectOf);let inertPixels=0;
+for(const item of ITEMS.filter(i=>!i.action)){
+  const r=rectOf(item);
+  for(let x=r.x0;x<=r.x1;x++)for(let y=r.y0;y<=r.y1;y++){
+    if(actionableRects.some(other=>inside(other,x,y)))continue;
+    const hit=hitTest(x,y,HIT_STATE,{});
+    assert.ok(hit===null||hit.type==='lamp',`${item.id} at ${x},${y} is inert, got ${hit?.id||hit?.type}`);
+    inertPixels++;
+  }
+}
+assert.ok(inertPixels>1000,'Decoration pixels are actually sampled');
+assert.equal(hitTest(GARDEN.swingX,GARDEN.swingY,HIT_STATE,{}),null,'The swing is scenery, not a click target');
+assert.equal(hitTest(0,0,HIT_STATE,{}),null);
 
 
 // S6: real controllers, deterministic Beijing dates, no manual task API.
@@ -102,6 +128,25 @@ for(const activity of ['game','read','exercise','playCat','lookOut','phone','sna
 const songsSeen=new Set();for(const t of ['19:00:00','19:10:00','19:20:00']){at(t);const nav=makeNav(),life=new LifeDirector(nav,world);life.setPlan('guitar');const song=life.song;songsSeen.add(song.title);const lines=new Set();for(let i=0;i<9000&&life.activity==='guitar';i++){if(life.snapshot().lyric)lines.add(life.snapshot().lyric);nav.update(.05);life.update(.05);}assert.deepEqual(lines,new Set(song.lyrics));assert.notEqual(life.held,'guitar');}assert.equal(songsSeen.size,3);
 const calls=new Set();for(let i=0;i<100;i++){for(let minute=19*60;minute<24*60;minute+=5){const h=String(Math.floor(minute/60)%24).padStart(2,'0'),m=String(minute%60).padStart(2,'0');clock=RealDate.parse(`2026-09-17T${h}:${m}:00+08:00`)+i*86400000;const life=new LifeDirector(makeNav(),world);if(life.snapshot().call){calls.add(life.snapshot().call.title);assert.equal(life.snapshot().call.lines.length,12);}}}assert.ok(calls.size>=10,'Deterministic profile calls remain available');
 at('19:00:00');const petWorld=new PetWorld(world);for(const pet of [petWorld.cat,petWorld.dog])for(const state of Object.keys(pet.labels)){pet.go(0,100,state,10);for(let i=0;i<500;i++){const before=JSON.stringify({nav:pet.nav.snapshot(),state:pet.state,timer:pet.timer,high:pet.high});pet.react();assert.equal(JSON.stringify({nav:pet.nav.snapshot(),state:pet.state,timer:pet.timer,high:pet.high}),before,'Pet clicks do not intervene');pet.update(.05,{floor:0,x:110},{activity:'read'});}assert.ok(Number.isFinite(pet.nav.x));}
+// Horizontal-build pet interactions: cat touch chain, dog bark then follow, lamp fright.
+at('19:00:00');
+{
+  const touched=new PetWorld(world);
+  assert.equal(touched.cat.pet(),'pet');assert.equal(touched.cat.pet(),'pet');assert.equal(touched.cat.pet(),'flop');
+  assert.equal(touched.cat.pet(),'walkaway','The fourth touch sends the cat away');
+  assert.equal(touched.cat.pet(),'pet','A new chain starts after the cat walks away');
+  clock+=4000;assert.equal(touched.cat.pet(),'pet','The chain timer resets after three seconds');
+  const target={floor:0,x:110};
+  assert.equal(touched.dog.greet(target),'bark');assert.equal(touched.dog.greet(target),'follow','A second touch within four seconds follows');
+  assert.equal(touched.dog.state,'follow');assert.equal(touched.frighten(),true);assert.equal(touched.cat.state,'underbed');assert.equal(touched.cat.high,false);
+}
+// Manual guitar and wardrobe keep the horizontal refusal rules.
+at('20:00:00');{const nav2=makeNav(),life2=new LifeDirector(nav2,world);assert.equal(life2.schedule,'playCat');assert.equal(life2.startGuitar(),'ok');assert.equal(life2.activity,'guitar');assert.equal(life2.startGuitar(),'busy');assert.equal(life2.schedule,'playCat','Manual guitar does not hijack the timetable');}
+at('20:00:00');{const life2=new LifeDirector(makeNav(),world);assert.equal(life2.startChange(),'ok');assert.equal(life2.activity,'change');}
+at('15:00:00');{const life2=new LifeDirector(makeNav(),world);assert.equal(life2.startGuitar(),'ok');assert.equal(life2.startChange(),'later','A manual song during work does not open the wardrobe');}
+at('08:00:00');{const life2=new LifeDirector(makeNav(),world);assert.equal(life2.startChange(),'later','Wardrobe change is an evening leisure entry in the horizontal build');}
+at('03:00:00');{const life2=new LifeDirector(makeNav(),world);life2.setPlan('sleep');assert.equal(life2.startGuitar(),'sleep');assert.equal(life2.startChange(),'sleep');}
+at('21:00:00','2026-09-14');{const nav2=makeNav(),life2=new LifeDirector(nav2,world);assert.equal(life2.schedule,'call');assert.equal(life2.startGuitar(),'call');assert.equal(life2.startChange(),'call');step(nav2,life2,10);assert.equal(nav2.walking,false);assert.equal(life2.pose,'call');assert.equal(life2.snapshot().callLine,life2.snapshot().call.lines[0]);step(nav2,life2,155);assert.equal(life2.snapshot().callLine,life2.snapshot().call.lines[1],'Call line advances every 150 seconds');}
 // Navigation continuity through both staircases and the garden, including return.
 const nav=makeNav();for(const [x,y] of [[GARDEN.swingX,GARDEN.swingY],[70,150],[60,248],[100,346]]){nav.moveToPoint(x,y);for(let i=0;i<800&&nav.walking;i++){const before=nav.snapshot();nav.update(.05);assert.ok(Math.hypot(nav.x-before.x,nav.y-before.y)<=2.101);}assert.equal(nav.walking,false);assert.equal(nav.x,x);assert.equal(nav.y,y);}assert.equal(NAVIGATION_GEOMETRY.edges.length,15);
 // The visible high cat must receive the click, without a ghost hit at its old floor.
@@ -113,10 +158,10 @@ world.date='2000-1-1';world.bowls={cat:0,dog:0};world.pkg={state:'arrived',days:
 assert.equal(ITEM_IDS.length,53);assert.equal(ROOMS.length,4);assert.equal(ITEMS.filter(i=>i.art.startsWith('plush-')).length+1,7);assert.equal(Object.values(STORY.dishes).flat().length,38);assert.equal(STORY.snacks.length,6);
 assert.equal(data.get('pixel-room-save-v1'),'legacy-sentinel');assert.ok(accessed.every(k=>k.startsWith('pixel-room-portrait-')),'Only portrait storage touched');
 // Rendering smoke includes every active life pose and high/under-bed pet branch.
-for(const pose of ['sleep','phone','fridge','cook','eat','work','game','toilet','read','call','guitar','swing','washHands','brush','shower','exercise','wardrobe','change','door'])drawScene({getContext:()=>ctx},{...prefs,particles:true},null,{actor:{...nav.snapshot(),pose,motion:1,held:'phone'},life:{pose,motion:1},pets:{cat:{...highCat,motion:1,direction:1},dog:{kind:'dog',x:100,y:346,state:'sleep',motion:1}},world,weather:{kind:'storm'},time:{hour:23}});
+for(const pose of ['sleep','phone','fridge','cook','eat','work','game','toilet','read','call','guitar','swing','washHands','brush','shower','exercise','wardrobe','change','door'])drawScene({getContext:()=>ctx},{...prefs,particles:true},{actor:{...nav.snapshot(),pose,motion:1,held:'phone'},life:{pose,motion:1},pets:{cat:{...highCat,motion:1,direction:1},dog:{kind:'dog',x:100,y:346,state:'sleep',motion:1}},world,weather:{kind:'storm'},time:{hour:23}});
 let contexts=0,tones=0;globalThis.AudioContext=class{constructor(){contexts++;this.currentTime=0;this.destination={};}async resume(){}createOscillator(){return{type:'',frequency:{value:0},connect(node){return node;},start(){tones++;},stop(){}};}createGain(){return{gain:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){}};}};
 const audioPrefs={sound:false,volume:60},sound=new AudioSystem(audioPrefs);assert.equal(contexts,0);sound.interact('cat');assert.equal(tones,0);audioPrefs.sound=true;await sound.enable();assert.equal(contexts,1);sound.interact('dog');assert.ok(tones>0);audioPrefs.sound=false;const played=tones;sound.update({kind:'rain'},{hour:23},{pose:'guitar'});sound.interact('human');assert.equal(tones,played,'Mute prevents new sound nodes');delete globalThis.AudioContext;
 assert.throws(()=>parseLetterFile('image.png','text',STORY.letters.toMomo),/仅支持/);assert.throws(()=>parseLetterFile('a.json','{"paragraphs":[{}]}',STORY.letters.toMomo),/字符串/);
 // Weather success and rejected requests both settle to a usable state.
 const realFetch=globalThis.fetch;for(const [code,kind] of [[0,'clear'],[63,'rain'],[73,'snow'],[95,'storm']]){globalThis.fetch=async()=>({ok:true,json:async()=>({current:{weather_code:code,temperature_2m:23.6,wind_speed_10m:5}})});const env=Object.create(Environment.prototype);env.lastFetch=0;await env.fetch();assert.equal(env.weather.kind,kind);assert.equal(env.weather.source,'api');assert.equal(env.weather.temperature,24);}globalThis.fetch=async()=>{throw Error('offline')};const env=Object.create(Environment.prototype);env.lastFetch=0;await env.fetch();assert.equal(env.weather.source,'fallback');globalThis.fetch=realFetch;globalThis.Date=RealDate;
-console.log('PASS S6: autonomous schedule (10 boundaries), uninterrupted clicks, all leisure/pet states, 3 songs, 100 calls, garden routes, lamp modes, letters, world/storage isolation, weather, original content and drawing.');
+console.log('PASS S6: autonomous schedule (10 boundaries), classic click scope (15 targets, decorations inert), pet touch chain and follow, manual guitar/wardrobe rules, call lines, all leisure states, 3 songs, 100 calls, garden routes, lamp modes and fright, letters, world/storage isolation, weather, original content and drawing.');

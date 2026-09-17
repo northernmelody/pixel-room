@@ -6,12 +6,14 @@
 
 ### 已交付
 
-- 当前分支：`master`；最新提交：`385c491 feat: make portrait the default site entry`。
-- GitHub：`https://github.com/northernmelody/pixel-room.git`，工作区已提交并推送。
-- Vercel Production：`https://pixel-room-eight.vercel.app`，部署状态为 `READY`。
+- 当前分支：`master`；本轮改动由两次提交组成：横版入口脚本路径修复、竖版点击范围收束与交互迁移（提交顺序与哈希以 `git log` 为准）。
+- GitHub：`https://github.com/northernmelody/pixel-room.git`。
+- Vercel Production：`https://pixel-room-eight.vercel.app`，部署状态为 `READY`（该部署早于本轮改动）。
 - 主入口现在是竖版小屋：根路径会进入 `/portrait/`；设置页为 `/setting/`。
 - 原横版页面已迁移到次级入口：`/classic/`。横版原始脚本、样式和资源仍复用仓库根目录的 `js/`、`css/`、`assets/`。
-- 竖版 S6 已完成自主作息、点击不打断、宠物、庭院、灯光、信件、天气、音频入口、电脑频道和响应式入口验证。
+- 竖版已完成自主作息、宠物、庭院、灯光、信件、天气、音频入口、电脑频道和响应式入口验证。
+- 本轮把点击范围收束到横版基准，并把横版的人工交互迁回竖版：人物、猫（摸猫链）、狗（吠叫/跟随）、吉他、电脑、六盏灯（含连闪吓猫）、玩偶与抱枕、两封信、餐食热点、衣柜、户外门、通话卡片；装饰家具、窗户、地毯、摆件与秋千不再可点。
+- 修复横版入口致命缺陷：`classic/index.html` 的 `js/ui.js` 改为 `../js/ui.js`（原先 404 导致 `PixelRoom.UI` 未定义、`js/main.js` 的 `P.UI.init()` 抛错、横版主循环起不来）。同轮补上内联 favicon 消除 404，并同步刷新 `portrait/artifacts/baseline.json` 中 `classic/index.html` 的哈希。
 
 ### 当前验证
 
@@ -19,9 +21,11 @@
 
 ```powershell
 npm --prefix portrait test
+python portrait/tools/serve.py          # 另开终端，Chrome 验证需要
+node portrait/tools/browser-check.cjs   # 真实 Chromium 点击回归
 ```
 
-当前结果：S6 契约通过、Node 语法检查通过、原横版 23 个受保护文件未发生内容变化。旧版横向坐标冒烟脚本中仍有 3 个已知不等价失败，详见 `portrait/artifacts/legacy-smokes.json`；它们不代表竖版 S6 契约失败。
+当前结果：契约测试通过（含点击范围白名单、猫摸链/狗跟随、手动吉他与衣柜规则）、Node 语法检查通过、原横版 23 个受保护文件未发生内容变化（哈希已随本次横版修复刷新）。竖版真实浏览器回归 ALL PASS、页面异常 0，证据见 `portrait/artifacts/browser-check.log` 与 `_shots/portrait-browser-check.png`；横版入口真实浏览器验证 ALL PASS 见 `_shots/classic-entry-check.png`（`node _tools/check-classic.cjs`，覆盖 `PixelRoom.UI`/`LifeUI` 载入、时钟走动、画布非空、设置面板开合与零页面错误）。旧版横向坐标冒烟脚本中仍有 3 个已知不等价失败，详见 `portrait/artifacts/legacy-smokes.json`。`portrait/artifacts/s6-browser-results.txt` 早于星期档案改造，已过时。
 
 ### 入口约定
 
@@ -47,11 +51,14 @@ npm --prefix portrait test
 
 页面控件包括声音开关、设置面板、音量、天气粒子、星空、动画细节和重置横版本地存档。竖版若重新收束点击范围，应以这份清单作为旧版行为基准，而不是让所有装饰家具都打开详情弹窗。
 
+2026-09-17 复核与收束：该项**已执行**。`portrait/js/layout.js` 的物件 `action` 字段成为唯一白名单（15 个可操作物件），`portrait/js/scene.js` 的 `hitTest()` 只返回带 `action` 的物件，`portrait/js/main.js` 按 `action` 分派到弹窗或提示；`showItem()`、`inventory()`、「今天的生活」汇总、秋千弹窗和全物件悬浮标签已删除，人物的「××回应了你」与灯的「已点亮/已关闭」文字提示不再出现。逐项对应表见 `portrait/COVERAGE.md` 的「横版可操作交互的竖版对应」。真实浏览器逐项回归通过。
+
 ### 下一阶段建议
 
-1. 用真实浏览器检查生产域名的根路径、`/portrait/`、`/classic/` 和 `/setting/` 四个入口，确认部署保护或浏览器缓存没有影响跳转。
+1. 用真实浏览器检查生产域名的根路径、`/portrait/`、`/classic/` 和 `/setting/` 四个入口，确认部署保护或浏览器缓存没有影响跳转（本地已验证 `/portrait/`、`/classic/`），并确认本次部署后横版入口在线上也正常。
 2. 若产品要求地址栏始终保持根路径，再将当前根路径跳转改成根路径内嵌竖版入口，并补充资源路径回归测试。
 3. 继续补齐竖版的长期稳定性、离线浏览器、真实音频听感和完整视觉回归；这些不应被当前 Node 契约测试的通过结果替代。
+4. `portrait/tools/baseline.cjs` 直接哈希工作区字节，受 CRLF/LF 检出差异影响（`js/ui.js` 当前是混合行尾）；建议改为按 LF 归一化后再哈希，并重新采集一次基线。
 
 > 最后整理：2026-08-19
 >
