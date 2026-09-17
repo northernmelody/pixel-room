@@ -81,6 +81,8 @@ function connect(wsUrl) {
       if (await evaluate("document.readyState==='complete' && !!window.PixelRoom && !!window.PixelRoom.UI")) break;
       await sleep(200);
     }
+    // Let the first animation frame paint before sampling the clock and the canvas.
+    await sleep(700);
     check(await evaluate("!!(window.PixelRoom && window.PixelRoom.UI)"), 'js/ui.js loads and defines PixelRoom.UI');
     check(await evaluate("!!(window.PixelRoom && window.PixelRoom.LifeUI)"), 'js/lifeUI.js loads and defines PixelRoom.LifeUI');
     check(await evaluate("!!document.querySelector('.life-hover')"), 'LifeUI.init ran (hover layer exists)');
