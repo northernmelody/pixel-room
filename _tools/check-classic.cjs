@@ -10,7 +10,8 @@ const root = path.resolve(__dirname, '..');
 const port = 9334;
 const profile = path.join(root, '_tools/.chrome-profile-classic');
 const page = process.argv[2] || 'http://127.0.0.1:8138/classic/';
-const outFile = path.join(root, '_shots/classic-entry-check.png');
+const outIndex = process.argv.indexOf('--out');
+const outFile = outIndex > -1 ? path.resolve(root, process.argv[outIndex + 1]) : path.join(root, '_shots/classic-entry-check.png');
 
 const chromePath = [
   path.join(process.env.ProgramFiles || 'C:/Program Files', 'Google/Chrome/Application/chrome.exe'),

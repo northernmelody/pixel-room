@@ -8,7 +8,7 @@
 
 - 当前分支：`master`；本轮改动由两次提交组成：横版入口脚本路径修复、竖版点击范围收束与交互迁移（提交顺序与哈希以 `git log` 为准）。
 - GitHub：`https://github.com/northernmelody/pixel-room.git`。
-- Vercel Production：`https://pixel-room-eight.vercel.app`，部署状态为 `READY`（该部署早于本轮改动）。
+- Vercel Production：`https://pixel-room-eight.vercel.app`，已在本轮重新部署（deployment `dpl_53xk9AMWHErxvtun8mYFCbSK9TBD`，`READY`），线上包含横版入口修复与竖版点击范围收束。
 - 主入口现在是竖版小屋：根路径会进入 `/portrait/`；设置页为 `/setting/`。
 - 原横版页面已迁移到次级入口：`/classic/`。横版原始脚本、样式和资源仍复用仓库根目录的 `js/`、`css/`、`assets/`。
 - 竖版已完成自主作息、宠物、庭院、灯光、信件、天气、音频入口、电脑频道和响应式入口验证。
@@ -26,6 +26,8 @@ node portrait/tools/browser-check.cjs   # 真实 Chromium 点击回归
 ```
 
 当前结果：契约测试通过（含点击范围白名单、猫摸链/狗跟随、手动吉他与衣柜规则）、Node 语法检查通过、原横版 23 个受保护文件未发生内容变化（哈希已随本次横版修复刷新）。竖版真实浏览器回归 ALL PASS、页面异常 0，证据见 `portrait/artifacts/browser-check.log` 与 `_shots/portrait-browser-check.png`；横版入口真实浏览器验证 ALL PASS 见 `_shots/classic-entry-check.png`（`node _tools/check-classic.cjs`，覆盖 `PixelRoom.UI`/`LifeUI` 载入、时钟走动、画布非空、设置面板开合与零页面错误）。旧版横向坐标冒烟脚本中仍有 3 个已知不等价失败，详见 `portrait/artifacts/legacy-smokes.json`。`portrait/artifacts/s6-browser-results.txt` 早于星期档案改造，已过时。
+
+线上验收（部署后）：`/`、`/portrait/`、`/classic/`、`/setting/`、`/js/ui.js`、`/portrait/js/main.js` 全部返回 200；生产域名横版入口在真实浏览器中 ALL PASS、零页面错误，证据见 `_shots/classic-prod-check.png`（`node _tools/check-classic.cjs https://pixel-room-eight.vercel.app/classic/ --out _shots/classic-prod-check.png`）。
 
 ### 入口约定
 
