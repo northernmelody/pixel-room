@@ -12,7 +12,7 @@ function walk(dir) {
     return entry.isDirectory() ? walk(file) : [file];
   });
 }
-const files = [path.join(root, 'index.html'), ...['js', 'css', 'assets'].flatMap(dir => walk(path.join(root, dir)))];
+const files = [path.join(root, 'classic/index.html'), ...['js', 'css', 'assets'].flatMap(dir => walk(path.join(root, dir)))];
 const hashes = Object.fromEntries(files.map(file => [path.relative(root, file).replaceAll('\\', '/'), crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')]));
 if (process.argv.includes('--capture')) {
   if (fs.existsSync(target)) throw new Error('Baseline already exists; refusing to overwrite evidence.');
