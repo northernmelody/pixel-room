@@ -2,6 +2,40 @@
 
 > 当前完整开发规格见 [Pixel Room 开发说明与当前功能规格](docs/DEVELOPMENT.md)（2026-09-10，代码基线 `7a78c0f`）。下文保留历史交接内容，其中画布尺寸、布局、作息和交互顺序已有过时信息，请勿直接作为当前实现依据。
 
+## 当前阶段交接（2026-09-17）
+
+### 已交付
+
+- 当前分支：`master`；最新提交：`385c491 feat: make portrait the default site entry`。
+- GitHub：`https://github.com/northernmelody/pixel-room.git`，工作区已提交并推送。
+- Vercel Production：`https://pixel-room-eight.vercel.app`，部署状态为 `READY`。
+- 主入口现在是竖版小屋：根路径会进入 `/portrait/`；设置页为 `/setting/`。
+- 原横版页面已迁移到次级入口：`/classic/`。横版原始脚本、样式和资源仍复用仓库根目录的 `js/`、`css/`、`assets/`。
+- 竖版 S6 已完成自主作息、点击不打断、宠物、庭院、灯光、信件、天气、音频入口、电脑频道和响应式入口验证。
+
+### 当前验证
+
+在仓库根目录执行：
+
+```powershell
+npm --prefix portrait test
+```
+
+当前结果：S6 契约通过、Node 语法检查通过、原横版 23 个受保护文件未发生内容变化。旧版横向坐标冒烟脚本中仍有 3 个已知不等价失败，详见 `portrait/artifacts/legacy-smokes.json`；它们不代表竖版 S6 契约失败。
+
+### 入口约定
+
+- 修改竖版功能：优先查看 `portrait/README.md`、`portrait/COVERAGE.md`、`portrait/js/` 和 `portrait/tests/`。
+- 修改横版功能：从 `classic/index.html` 进入，业务脚本仍在根目录 `js/`，样式在 `css/`。
+- 不要把旧 `handoff.md` 的横版坐标、作息顺序和交互优先级当作竖版规格；旧内容保留在本文下方，仅供历史追溯。
+- 根入口目前采用跳转到 `/portrait/` 的方式，因而浏览器地址会显示 `/portrait/`；若后续要求根路径保持不变，需要把竖版 HTML 和资源路径改为根路径可直接加载，或增加等价的 Vercel rewrite 与资源映射。
+
+### 下一阶段建议
+
+1. 用真实浏览器检查生产域名的根路径、`/portrait/`、`/classic/` 和 `/setting/` 四个入口，确认部署保护或浏览器缓存没有影响跳转。
+2. 若产品要求地址栏始终保持根路径，再将当前根路径跳转改成根路径内嵌竖版入口，并补充资源路径回归测试。
+3. 继续补齐竖版的长期稳定性、离线浏览器、真实音频听感和完整视觉回归；这些不应被当前 Node 契约测试的通过结果替代。
+
 > 最后整理：2026-08-19
 >
 > 当前基线：`96bf33b`（本轮修改未提交）
