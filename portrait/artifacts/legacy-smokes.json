@@ -1,0 +1,40 @@
+{
+  "checkedAt": "2026-09-17T10:56:00.471Z",
+  "results": [
+    {
+      "name": "smoke-daily-life.js",
+      "exitCode": 0,
+      "output": "SMOKE OK: calls/cycle, call priority, cooking/eating, wardrobe change lifecycle"
+    },
+    {
+      "name": "smoke-dog.js",
+      "exitCode": 0,
+      "output": "SMOKE OK: all states idle,wander,sleep,eat,zoomies,follow,bark,scratch,sit reached; draw no-throw; eat/interact/follow/night/bounds ok\nstate counts: {\"idle\":4231,\"sit\":1168,\"wander\":12692,\"zoomies\":568,\"sleep\":14037,\"bark\":429,\"follow\":4231,\"eat\":1310,\"scratch\":1334}"
+    },
+    {
+      "name": "smoke-fridge.js",
+      "exitCode": 0,
+      "output": "SMOKE OK: wash->breakfast fridge flow go→open(openP partial)→done→table, mealFood=[object Object]\nfinal debug: {\"x\":258,\"pose\":\"fridge\",\"activity\":\"breakfast\",\"fridgePhase\":\"open\",\"mealFood\":{\"type\":\"baozi\",\"name\":\"家常饭菜\",\"phase\":\"go\"},\"life\":null,\"washSeq\":null,\"washT\":0,\"react\":null,\"leisureAct\":null,\"leisureT\":-1,\"leisureSub\":null,\"leisureSubT\":0,\"nightAct\":null,\"nightPlan\":null,\"guitar\":null,\"lastSongId\":null,\"lastSongTime\":null}"
+    },
+    {
+      "name": "smoke-guitar.js",
+      "exitCode": 1,
+      "output": "SMOKE FAILED:\n - character ended back at guitar spot x=64, got x=60\n - character walked back to leisure spot x=undefined, got x=60"
+    },
+    {
+      "name": "smoke-layout.js",
+      "exitCode": 1,
+      "output": "SMOKE FAILED:\n - monitor should follow the new floor baseline (y=80)"
+    },
+    {
+      "name": "smoke-leisure.js",
+      "exitCode": 0,
+      "output": "休闲活动分布(80k帧≈66分钟): {\"phone\":44,\"exercise\":34,\"read\":20,\"look_out\":9,\"game\":28,\"snack\":20,\"play_cat\":18,\"change\":12} 切换 184 次; 单帧最大位移 0.75px\n猫睡觉: play_cat 未被选择 ✓  playWithHuman 调用 0 次 ✓\n逗猫: 猫追玩具 ✓ 扑跳 ✓ 休息 ✓ endPlay ✓\n猫 60k 帧单帧最大位移: 1.50px (上限=zoomies 1.5px/帧) ✓\n狗 x 范围: [21, 299]（要求 [21, 299]）✓\n夜间 70% 空计划 ✓\n夜间活动触发: toilet (atElapsed=178.8min) ✓ 无夜间健身 ✓\n夜间活动后回床 ✓\n健身占比 19:30=21.4%  21:50=6.7%\n子状态推进（read翻页/exercise动作/phone姿势）在长时间运行中无异常 ✓\nSMOKE OK: 休闲切换/无瞬移/猫睡觉不逗猫/逗猫联动/猫无瞬移/狗边界/夜间活动全部通过"
+    },
+    {
+      "name": "smoke-regressions.js",
+      "exitCode": 1,
+      "output": "SMOKE FAILED:\n - cat should be clickable at its elevated support surface\n - empty floor below an elevated cat should not trigger pet"
+    }
+  ]
+}

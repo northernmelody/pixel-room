@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101a23">
+  <title>Pixel Room · 小屋设置</title><link rel="stylesheet" href="../portrait/style.css"><link rel="stylesheet" href="./style.css">
+</head><body><main class="settings-page">
+  <header class="settings-head"><a class="brand" href="../portrait/"><span class="brand-mark" aria-hidden="true">▥</span><span>PIXEL ROOM<small>小屋设置</small></span></a><a class="back-link" href="../portrait/">← 返回竖版小屋</a></header>
+  <section class="settings-card" aria-labelledby="settings-title"><span class="eyebrow">HOUSE PREFERENCES</span><h1 id="settings-title">小屋设置</h1><p class="settings-intro">这里的调整只作用于竖版小屋，不会读写横版存档。</p>
+    <fieldset><legend>此刻的光</legend><div class="segmented three" aria-label="日夜"><button id="auto-theme" type="button" aria-pressed="false">自动</button><button id="day" type="button" aria-pressed="false">☀ 白昼</button><button id="night" type="button" aria-pressed="false">☾ 夜晚</button></div></fieldset>
+    <fieldset><legend><label for="season">窗外的季节</label></legend><select id="season"><option value="auto">随北京时间</option><option value="spring">春 · 万物生长</option><option value="summer">夏 · 风扇轻转</option><option value="autumn">秋 · 暖色的风</option><option value="winter">冬 · 一室暖意</option></select></fieldset>
+    <fieldset><legend>六盏灯</legend><div id="lamp-list" class="lamp-list"></div><button class="text-button" id="auto-lamps" type="button">恢复自动灯光</button></fieldset>
+    <label class="collection-switch"><input type="checkbox" id="collections">展示五类快递收藏</label>
+    <fieldset class="preferences"><legend>声音与画面</legend><label><span>音量</span><input id="volume" type="range" min="0" max="100" step="1"><output id="volume-value">60%</output></label><label><input id="particles" type="checkbox">天气粒子</label><label><input id="stars" type="checkbox">夜空星光</label><label><input id="detail" type="checkbox">完整动画细节</label></fieldset>
+    <fieldset class="letter-upload"><legend>两封信</legend><p>选择本地的 TXT、Markdown 或 JSON 文件。信件只保存在当前浏览器中，不会发送到服务器。</p><label><span>给 MOMO 的一封信</span><input id="letter-to" type="file" accept=".txt,.md,.markdown,.json,text/plain,application/json"><small id="letter-to-state">使用内置信件</small></label><label><span>MOMO 的回信</span><input id="letter-from" type="file" accept=".txt,.md,.markdown,.json,text/plain,application/json"><small id="letter-from-state">使用内置信件</small></label><button class="text-button" id="clear-letters" type="button">恢复两封内置信件</button></fieldset>
+    <div class="settings-actions"><button class="text-button" id="reset" type="button">恢复竖版设置</button><button class="text-button" id="reset-world" type="button">重置生活进度</button></div>
+    <p id="save-message" class="save-message" role="status" aria-live="polite"></p>
+  </section>
+</main><script type="module" src="./main.js"></script></body></html>

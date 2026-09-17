@@ -1,0 +1,9 @@
+{
+  "name": "pixel-room-portrait",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check js/main.js && node --check js/navigation.js && node --check js/life.js && node --check js/pets.js && node --check js/environment.js && node --check js/audio.js && node --check js/letters.js && node --check js/scene.js && node --check js/store.js && node --check ../setting/main.js",
+    "test": "npm run check && node tests/contracts.mjs && node tools/baseline.cjs"
+  }
+}

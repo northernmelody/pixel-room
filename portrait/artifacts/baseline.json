@@ -1,0 +1,29 @@
+{
+  "capturedAt": "2026-09-11T07:56:57.497Z",
+  "commit": "7a78c0fb1095fb91eebeb945f0d9c046bcf8846b",
+  "files": {
+    "index.html": "0a0678c2ee5a6dc5cc7caf5c0fadfa68b3de238ae79c034f608abacdabfba16e",
+    "js/audio.js": "8a7031fb5668be5613203c6cd4639a4498ce8abd2016ae6c6b703b5b87fcd933",
+    "js/cat.js": "74d8cf91c1e673f27e7852185f4977eea46bf292009492b4496db86d577607cb",
+    "js/character.js": "f262624449d6c34cb311fd02b3cee9f93cb4e2aa90243230d03273f64575f8fd",
+    "js/config.js": "74429e3e3e88f82604e38427fc8605bf5163ceb252d036b43b0a7dcbde30056c",
+    "js/dailyLife.js": "b55b76d120b67dc5c72804c58f378560c20ae722fd93227785dd10bc28cbca18",
+    "js/dog.js": "9c3dd793c685b9fd8dea1f6841927e611118736f1f144f35ad907917ba0117d0",
+    "js/interaction.js": "5d2b2dafbbe8f4d10798d21f63c8db234e500cfc7168187a88ec0ae8749e245e",
+    "js/lifeUI.js": "2b17e9a3943055fd71b1006b45789a524bcba3417a8db810da8c623fa60bcefe",
+    "js/lighting.js": "34b7525c6d1428b1a32e344a21d44948993501d77809e984fda1e7ec7406c9fd",
+    "js/main.js": "f3caeb19ad236d655b8922f72ddc2732c9bd2c32b116dd9b604e4dc4c4084fb0",
+    "js/renderer.js": "65a5745d91081f44ab843094ad1038a7759e76957517be5008ca421650c00b17",
+    "js/roomLayout.js": "5255ac5db1a5196c59c7715bceac3bd9786beb1b46b76b7b2caa2ba59f28d0af",
+    "js/songs.js": "9eaa9efc9e351a20c7043d76e56e5eab9552159cf0d33215f2de9dc9dd52a4a0",
+    "js/storage.js": "39d11d4c329b82af0c74ada7a43920589f7812bd7a97e6389a56bfba8fceba3f",
+    "js/storyData.js": "80f6f99f04868c5aab5b29cbeb6e5746cac7fa971fe0ebe4dad4d90ea504a228",
+    "js/timeSystem.js": "b9af8ceb0c4265bb5d149f0a160801f9e76d286ecabc1ce5febcd06394d6c8b1",
+    "js/ui.js": "beea20a36a9fbf744946008cf124b404bae473fa5a3b74a135470b5613c59a82",
+    "js/weatherEffects.js": "cfd452f373228c88167165a184b85daaf1861cdd70ee9bafe62f16ce2643ba65",
+    "js/weatherSystem.js": "36fc4e39a5579cff4551c3d7774cdf26ebdd7c7091796583afed4c12e5eaece8",
+    "css/style.css": "9c2b8d956198bfaddf720bc33949b809ac076ff026e6e8bfb052ea08fea691f1",
+    "assets/.gitkeep": "895bc7aaf0cfbd20ec48025e766e07ffdc1ea7725c7fcb74cbd8abe5d777ac64",
+    "assets/chat-bg.jpg": "df87469b06897a4bac641839d94f30fa8ab061190c41f7570c5d2e706581384c"
+  }
+}

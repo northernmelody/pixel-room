@@ -1,0 +1,14 @@
+2026-09-17 · In-app Chromium · localhost:8138/portrait/tests/browser.html
+PASS 07:29:55 → morning
+PASS 07:59:55 → breakfast
+PASS 11:59:55 → lunch
+PASS 17:59:55 → dinner
+PASS 21:29:55 → call
+PASS 21:59:55 → shower
+PASS 22:29:55 → sleep
+Each click was dispatched through the production Canvas click handler; activity, route, pose, step and timers compared synchronously.
+Reactions: human 224, cat 224, dog 224
+Moving: human 135, cat 107, dog 72
+Acting: human 89, cat 117, dog 152
+Page errors / unhandled rejections: 0
+ALL PASS
