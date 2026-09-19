@@ -26,15 +26,16 @@ python portrait/tools/serve.py
 
 - `npm --prefix portrait test`：通过；包含 S6 自主作息、10 个边界、点击范围白名单（16 个目标）、衣柜/冰箱随机内容、姿势回应、猫摸链与狗跟随、吉他拒绝规则、通话当前句、庭院路径、三首歌词、100 天通话、信件解析、天气、音频和存储隔离契约。
 - 原版保护检查：通过，23 个横版文件哈希未变化（横版标题改名后已刷新 `classic/index.html` 的哈希）。
-- 真实浏览器点击回归：`node portrait/tools/browser-check.cjs` → `artifacts/browser-check.log`，14 项 ALL PASS，页面异常 0；截图 `_shots/portrait-browser-check.png`。覆盖 4 个作息边界、两类角色点击、装饰物件无命中、玩偶/餐食/木门提示、电脑与两封信、衣柜与冰箱开门、吉他弹唱与洗漱拒绝、姿势回应无文字气泡、闪灯吓猫、通话卡片、品牌与默认声音。
+- 真实浏览器点击回归：`node portrait/tools/browser-check.cjs` → `artifacts/browser-check.log`，14 项 ALL PASS，页面异常 0；截图 `_shots/portrait-browser-check.png`。覆盖 4 个作息边界（并断言说明条显示当前行为）、两类角色点击、装饰物件无命中、玩偶/餐食/木门提示、电脑与两封信、衣柜与冰箱开门、吉他弹唱与洗漱拒绝、姿势回应无文字气泡、闪灯吓猫、通话卡片、品牌与默认声音。
+- 真实视口回归：`node portrait/tools/viewport-check.cjs --shots`，320×568、375×812、390×844、430×932、1440×900 全部 ALL PASS（页面无横向溢出、说明条含行为且不越界、时钟可见且在画面内、画布已绘制），截图 `_shots/viewport-*.png`。
 - 新增视觉截图：`_shots/still-here-shower.png`（淋浴关门＋仅内裤）、`still-here-wardrobe.png`、`still-here-fridge.png`、`still-here-reaction.png`、`still-here-cat.png`、`still-here-dog.png`。
-- 真实视口：320×568、375×812、390×844、430×932、1440×1000 无横向溢出；设置页 320px 控件也无横向溢出。
+- 真实视口：320×568、375×812、390×844、430×932、1440×1000 无横向溢出；设置页 320px 控件也无横向溢出。说明条在最窄档只让行为文字省略，北京时间始终保留。
 - 设置页与内容：两封本地 Markdown/JSON 信件上传、刷新恢复、恢复内置信件、六频道电脑、12 句通话、声音开关、自动/手动灯光和音量端点均已检查。
 - 早期证据 `artifacts/s6-browser-results.txt` 早于星期档案改造，其中的固定作息时刻（21:29 通话等）已过时，仅作历史参考。
 
 ## 正式交互
 
-页面打开后自动按北京时间进入当前生活阶段，没有移动按钮或任务启动按钮；点击空地不控制人物。点击范围与横版一致，`js/layout.js` 的物件 `action` 字段是唯一白名单。
+页面打开后自动按北京时间进入当前生活阶段，没有移动按钮或任务启动按钮；点击空地不控制人物。点击范围与横版一致，`js/layout.js` 的物件 `action` 字段是唯一白名单。画面左上角的说明条显示「季节 · 光照 · 当前行为」（例如「秋日 · 阳光正好 · 走到电脑前」），右侧是北京时间；窄屏下行为文字省略，时间不会被挤掉。
 
 - 人物：横版姿势回应（挥手／点头／惊醒／回头，约 1.2–1.8 秒）与提示音，不改作息、路线和计时；睡眠与淋浴中不回应。
 - 猫：摸猫链——3 秒内连点到第 4 次会伸爪走开；高处先落地、床下先出来。狗：首次点击吠叫，4 秒内再点跟随 10 秒。
@@ -91,7 +92,8 @@ python portrait/tools/serve.py
 npm --prefix portrait run check
 npm --prefix portrait test
 python portrait/tools/serve.py          # 另开一个终端
-node portrait/tools/browser-check.cjs   # 真实 Chromium 点击回归
+node portrait/tools/browser-check.cjs   # 真实 Chromium 点击与内容回归
+node portrait/tools/viewport-check.cjs  # 真实视口回归（320/375/390/430/1440）
 ```
 
-`check` 执行模块语法检查；`test` 还会运行自主行为与点击范围契约、以及原版保护检查。`browser-check.cjs` 通过 CDP 驱动本机 Chrome，把 `tests/browser.html?autorun` 的真实点击结果写入 `artifacts/browser-check.log` 并截图；它需要 Chrome 与 `serve.py` 同时可用。原版受保护文件没有在本轮修改。旧版横向 smoke 中仍有三项坐标/接口断言失败，详见 [功能覆盖清单](COVERAGE.md)，不计入竖版契约结果。
+`check` 执行模块语法检查；`test` 还会运行自主行为与点击范围契约、以及原版保护检查。`browser-check.cjs` 通过 CDP 驱动本机 Chrome，把 `tests/browser.html?autorun` 的真实点击结果写入 `artifacts/browser-check.log` 并截图；`viewport-check.cjs` 用 CDP 视口仿真（Chrome 在 Windows 下会忽略 `--window-size` 的页面布局，必须用仿真）逐档断言说明条、时钟与画布都在画面内且页面无横向溢出，加 `--shots` 时输出 `_shots/viewport-<w>x<h>.png`。两者都需要 Chrome 与 `serve.py` 同时可用。原版受保护文件没有在本轮修改。旧版横向 smoke 中仍有三项坐标/接口断言失败，详见 [功能覆盖清单](COVERAGE.md)，不计入竖版契约结果。

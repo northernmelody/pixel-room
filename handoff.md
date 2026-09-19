@@ -16,6 +16,7 @@
 - 修复横版入口致命缺陷：`classic/index.html` 的 `js/ui.js` 改为 `../js/ui.js`（原先 404 导致 `PixelRoom.UI` 未定义、`js/main.js` 的 `P.UI.init()` 抛错、横版主循环起不来）。同轮补上内联 favicon 消除 404，并同步刷新 `portrait/artifacts/baseline.json` 中 `classic/index.html` 的哈希。
 - 本轮（第二批）竖版 6 项需求：①衣柜与冰箱可点击打开，内部显示随机像素颜色衣物／食物（再点或 5 秒自动关闭）；②吉他点击入口校准为「睡觉/通话/洗漱/淋浴/正在弹唱」拒绝，其余可打断；③点击回应改为横版姿势（wave/nod/startle/lookback）与猫狗分级姿态，不再使用文字气泡，睡眠与淋浴中不回应；④淋浴时淋浴间玻璃门关闭、人物改为仅内裤形象、水流绘制在人物前方；⑤声音默认开启、隐藏页内设置与横版入口（声音开关保留在 ☰ 菜单）；⑥可见文案 Pixel Room 改为 Still here（存档键与项目 ID 不变）。
 - 视觉与架构配套：`portrait/js/art/generate.mjs` 现在从横版 `drawReact`、猫狗渲染函数生成姿势变体，同一角色的所有变体共用联合包围盒与锚点（`ITEM_META.anchorX/anchorY`），姿势切换不会让脚底跳动。
+- 左上角状态说明条补上「当前行为」：显示为「季节 · 光照 · 当前行为」（如「秋日 · 阳光正好 · 走到电脑前」），行为取当前动作步骤；新增 `portrait/tools/viewport-check.cjs` 做多视口真实回归（320/375/390/430/1440，断言说明条与时钟都在画面内、无横向溢出），并记录一个工具陷阱：Chrome 在 Windows 下忽略 `--window-size` 对页面布局的作用，窄屏必须用 CDP 视口仿真，否则截到的只是宽布局的裁剪。
 
 ### 当前验证
 
@@ -23,11 +24,12 @@
 
 ```powershell
 npm --prefix portrait test
-python portrait/tools/serve.py          # 另开终端，Chrome 验证需要
-node portrait/tools/browser-check.cjs   # 真实 Chromium 点击回归
+python portrait/tools/serve.py            # 另开终端，Chrome 验证需要
+node portrait/tools/browser-check.cjs     # 真实 Chromium 点击与内容回归
+node portrait/tools/viewport-check.cjs    # 多视口回归（320/375/390/430/1440）
 ```
 
-当前结果：契约测试通过（含点击范围白名单 16 目标、衣柜/冰箱随机内容、姿势回应、猫摸链/狗跟随、吉他拒绝规则与洗漱豁免、通话当前句）、Node 语法检查通过、原横版 23 个受保护文件未发生内容变化（哈希已随横版修复与改名刷新）。竖版真实浏览器回归 14 项 ALL PASS、页面异常 0，证据见 `portrait/artifacts/browser-check.log`；截图 `_shots/portrait-browser-check.png`、`_shots/still-here-shower.png`、`still-here-wardrobe.png`、`still-here-fridge.png`、`still-here-reaction.png`、`still-here-cat.png`、`still-here-dog.png`。横版入口真实浏览器验证 ALL PASS 见 `_shots/classic-entry-check.png`（`node _tools/check-classic.cjs`，覆盖 `PixelRoom.UI`/`LifeUI` 载入、时钟走动、画布非空、设置面板开合与零页面错误）。旧版横向坐标冒烟脚本中仍有 3 个已知不等价失败，详见 `portrait/artifacts/legacy-smokes.json`。`portrait/artifacts/s6-browser-results.txt` 早于星期档案改造，已过时。
+当前结果：契约测试通过（含点击范围白名单 16 目标、衣柜/冰箱随机内容、姿势回应、猫摸链/狗跟随、吉他拒绝规则与洗漱豁免、通话当前句）、Node 语法检查通过、原横版 23 个受保护文件未发生内容变化（哈希已随横版修复与改名刷新）。竖版真实浏览器回归 14 项 ALL PASS、页面异常 0（含说明条显示当前行为且与生活状态一致），证据见 `portrait/artifacts/browser-check.log`；多视口回归 5 档 ALL PASS，截图 `_shots/viewport-*.png`；功能截图 `_shots/portrait-browser-check.png`、`_shots/still-here-shower.png`、`still-here-wardrobe.png`、`still-here-fridge.png`、`still-here-reaction.png`、`still-here-cat.png`、`still-here-dog.png`。横版入口真实浏览器验证 ALL PASS 见 `_shots/classic-entry-check.png`（`node _tools/check-classic.cjs`，覆盖 `PixelRoom.UI`/`LifeUI` 载入、时钟走动、画布非空、设置面板开合与零页面错误）。旧版横向坐标冒烟脚本中仍有 3 个已知不等价失败，详见 `portrait/artifacts/legacy-smokes.json`。`portrait/artifacts/s6-browser-results.txt` 早于星期档案改造，已过时。
 
 线上验收（部署后）：`/`、`/portrait/`、`/classic/`、`/setting/`、`/portrait/js/main.js`、`/portrait/js/store.js`、`/classic/index.html` 全部返回 200；`main.js`、`scene.js`、`store.js`、`sprites.generated.js`、`portrait/index.html`、`classic/index.html` 的线上内容与提交内容逐字节一致（LF 归一化）。生产域名真实浏览器验收：竖版 11 项 ALL PASS、零页面错误（标题/品牌为 Still here、页内无设置与横版链接、声音默认开启、画布已绘制、16 个可操作目标、冰箱可点），截图 `_shots/still-here-production.png`；横版入口 ALL PASS，截图 `_shots/classic-prod-check.png`（`node _tools/check-classic.cjs https://pixel-room-eight.vercel.app/classic/ --out _shots/classic-prod-check.png`）。
 
