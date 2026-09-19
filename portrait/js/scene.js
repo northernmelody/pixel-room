@@ -138,7 +138,7 @@ function garden(ctx,state,actor){
   for(let y=369;y<438;y+=10){rect(ctx,150,y,15,5,night?'#686b60':'#aaa98d');rect(ctx,151,y,13,1,'#c0baa0');}
   for(let x=91;x<150;x+=14)rect(ctx,x,417,10,4,night?'#686b60':'#aaa98d');
   // Low flower borders frame the lawn without obscuring the swing.
-  for(const [x,y,w] of [[10,374,28],[177,376,28],[13,429,105],[178,427,27]]){
+  for(const [x,y,w] of GARDEN_FLOWER_BEDS){
     rect(ctx,x,y+5,w,6,'#4b5037');rect(ctx,x,y+10,w,2,'#91704c');
     for(let i=3;i<w-2;i+=6){rect(ctx,x+i,y+1,1,6,'#3e6441');rect(ctx,x+i-2,y+3,5,2,'#547747');rect(ctx,x+i-1,y,3,3,state.season==='winter'?'#d7ddd0':i%3?'#d8b573':'#c98889');rect(ctx,x+i,y+1,1,1,'#f1d7a0');}
   }
@@ -153,6 +153,46 @@ function garden(ctx,state,actor){
   rect(ctx,x-11+sway,y-8,24,4,'#916238');rect(ctx,x-10+sway,y-8,22,1,'#d5ab70');
   // Foreground fence leaves the path open.
   for(const [x,w] of [[5,135],[175,35]]){rect(ctx,x,442,w,2,'#695338');for(let px=x;px<x+w;px+=18){rect(ctx,px,437,3,13,'#59452f');rect(ctx,px,437,3,1,'#b29160');}}
+  gardenToys(ctx,night);
+}
+
+// Two plush animals sit on the lawn between the swing and the stepping stones.
+export const GARDEN_FLOWER_BEDS=Object.freeze([[10,374,28],[177,376,28],[13,429,105],[178,427,27]]);
+export const GARDEN_TOYS=Object.freeze([
+  Object.freeze({id:'elephant',x:20,y:400,w:18,h:15}),
+  Object.freeze({id:'giraffe',x:122,y:388,w:15,h:24})
+]);
+function gardenToys(ctx,night){
+  // Fixed palettes keep the plushies readable in daylight and dimmed after dark.
+  const skin=night?{main:'#7d8794',shade:'#6a7481',dark:'#515a66',light:'#8d97a4'}:{main:'#a3acb8',shade:'#98a1ad',dark:'#6f7885',light:'#bcc4ce'};
+  const fur=night?{main:'#a8763a',shade:'#8a5f2c',dark:'#6b4a22',light:'#c99a55'}:{main:'#dda75a',shade:'#c98f45',dark:'#a9762f',light:'#eec27c'};
+  const eye='#2c3238';
+  const [elephant,giraffe]=GARDEN_TOYS;
+  const e=elephant;
+  rect(ctx,e.x+1,e.y+13,16,2,'#26382744');
+  rect(ctx,e.x+11,e.y+2,4,6,skin.shade);                                  // ear behind the head
+  rect(ctx,e.x+2,e.y+5,11,7,skin.main);                                   // body
+  rect(ctx,e.x+3,e.y+5,9,1,skin.light);                                   // back highlight
+  rect(ctx,e.x+1,e.y+5,1,4,skin.shade);rect(ctx,e.x,e.y+9,2,2,skin.dark); // tail
+  rect(ctx,e.x+4,e.y+11,3,3,skin.shade);rect(ctx,e.x+9,e.y+11,3,3,skin.shade);
+  rect(ctx,e.x+4,e.y+13,3,1,skin.dark);rect(ctx,e.x+9,e.y+13,3,1,skin.dark); // feet
+  rect(ctx,e.x+11,e.y+3,6,8,skin.main);rect(ctx,e.x+11,e.y+3,5,1,skin.light); // head
+  rect(ctx,e.x+14,e.y+5,1,1,eye);                                         // eye
+  rect(ctx,e.x+16,e.y+9,1,2,night?'#cfc8b4':'#f2ead4');                   // tusk
+  rect(ctx,e.x+16,e.y+6,2,5,skin.shade);rect(ctx,e.x+15,e.y+10,3,3,skin.shade);rect(ctx,e.x+16,e.y+12,2,1,skin.dark); // trunk
+  const g=giraffe;
+  rect(ctx,g.x+1,g.y+23,13,2,'#26382744');
+  rect(ctx,g.x+3,g.y+18,3,5,fur.main);rect(ctx,g.x+8,g.y+18,3,5,fur.main);  // legs
+  rect(ctx,g.x+3,g.y+22,3,1,fur.dark);rect(ctx,g.x+8,g.y+22,3,1,fur.dark);  // hooves
+  rect(ctx,g.x+1,g.y+13,10,6,fur.main);rect(ctx,g.x+2,g.y+17,8,2,fur.light); // body and belly
+  rect(ctx,g.x+8,g.y+9,5,5,fur.main);rect(ctx,g.x+9,g.y+4,4,6,fur.main);    // neck
+  rect(ctx,g.x+9,g.y+2,5,4,fur.main);rect(ctx,g.x+13,g.y+3,2,3,fur.shade);  // head and muzzle
+  rect(ctx,g.x+8,g.y+3,2,2,fur.shade);                                      // ear
+  rect(ctx,g.x+10,g.y,1,2,fur.dark);rect(ctx,g.x+12,g.y,1,2,fur.dark);      // ossicones
+  rect(ctx,g.x+11,g.y+3,1,1,eye);
+  rect(ctx,g.x+3,g.y+14,2,2,fur.dark);rect(ctx,g.x+6,g.y+16,2,2,fur.dark);  // spots
+  rect(ctx,g.x+10,g.y+6,2,2,fur.dark);rect(ctx,g.x+9,g.y+11,1,2,fur.dark);
+  rect(ctx,g.x,g.y+14,1,5,fur.dark);rect(ctx,g.x,g.y+19,2,1,fur.dark);      // tail tuft
 }
 
 function ceilingLamp(ctx,lamp,on){

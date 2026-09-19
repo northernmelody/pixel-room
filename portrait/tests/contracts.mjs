@@ -7,7 +7,7 @@ import { ITEM_IDS, ITEM_META, drawItem, resolveItemVariant } from '../js/art/ind
 import { SPRITES } from '../js/art/sprites.generated.js';
 import { STORY, SONGS } from '../js/content/index.js';
 import { loadPreferences, savePreferences, resetPreferences } from '../js/store.js';
-import { hitTest, drawScene, propContents, PROP_BOX, PROP_PALETTES } from '../js/scene.js';
+import { hitTest, drawScene, propContents, PROP_BOX, PROP_PALETTES, GARDEN_TOYS, GARDEN_FLOWER_BEDS } from '../js/scene.js';
 import { NavigationController, NAVIGATION_GEOMETRY } from '../js/navigation.js';
 import { LifeDirector } from '../js/life.js';
 import { PetWorld } from '../js/pets.js';
@@ -191,6 +191,22 @@ for(const kind of ['wardrobe','fridge']){
   }
 }
 assert.throws(()=>propContents('oven',1),/Unknown prop/);
+
+// The two garden plushies stay on clear lawn: inside the garden, off the swing,
+// the stepping stones and the flower beds.
+const overlaps=(a,b)=>a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h;
+const RESERVED=[
+  {id:'swing frame',x:GARDEN.swingX-29,y:GARDEN.swingY-40,w:60,h:44},
+  {id:'door steps',x:150,y:369,w:15,h:69},
+  {id:'walkway steps',x:91,y:417,w:59,h:5},
+  ...GARDEN_FLOWER_BEDS.map(([x,y,w])=>({id:'flower bed at '+x+','+y,x,y,w,h:17}))
+];
+assert.equal(new Set(GARDEN_TOYS.map(toy=>toy.id)).size,GARDEN_TOYS.length,'Toy ids are unique');
+for(const toy of GARDEN_TOYS){
+  assert.ok(toy.x>=4&&toy.x+toy.w<=212,toy.id+' stays on the lawn horizontally');
+  assert.ok(toy.y>=GARDEN.groundY&&toy.y+toy.h<=441,toy.id+' sits on the lawn above the fence');
+  for(const zone of RESERVED)assert.ok(!overlaps(toy,zone),'The '+toy.id+' clears the '+zone.id);
+}
 // Navigation continuity through both staircases and the garden, including return.
 const nav=makeNav();for(const [x,y] of [[GARDEN.swingX,GARDEN.swingY],[70,150],[60,248],[100,346]]){nav.moveToPoint(x,y);for(let i=0;i<800&&nav.walking;i++){const before=nav.snapshot();nav.update(.05);assert.ok(Math.hypot(nav.x-before.x,nav.y-before.y)<=2.101);}assert.equal(nav.walking,false);assert.equal(nav.x,x);assert.equal(nav.y,y);}assert.equal(NAVIGATION_GEOMETRY.edges.length,15);
 // The visible high cat must receive the click, without a ghost hit at its old floor.
