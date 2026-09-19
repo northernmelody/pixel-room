@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check js/main.js && node --check js/navigation.js && node --check js/life.js && node --check js/pets.js && node --check js/environment.js && node --check js/audio.js && node --check js/letters.js && node --check js/scene.js && node --check js/store.js && node --check js/time.js && node --check js/layout.js && node --check ../setting/main.js && node --check tests/browser.mjs && node --check tests/visual.mjs && node --check tools/browser-check.cjs",
+    "check": "node --check js/main.js && node --check js/navigation.js && node --check js/life.js && node --check js/pets.js && node --check js/environment.js && node --check js/audio.js && node --check js/letters.js && node --check js/scene.js && node --check js/store.js && node --check js/time.js && node --check js/layout.js && node --check ../setting/main.js && node --check tests/browser.mjs && node --check tests/visual.mjs && node --check tools/browser-check.cjs && node --check tools/viewport-check.cjs",
     "test": "npm run check && node tests/contracts.mjs && node tools/baseline.cjs",
-    "browser": "node tools/browser-check.cjs"
+    "browser": "node tools/browser-check.cjs",
+    "viewport": "node tools/viewport-check.cjs"
   }
 }

@@ -32,11 +32,17 @@ document.querySelector('#run').onclick=async()=>{results.textContent='';
 // Start from a fresh visitor: the test page shares the app origin, so clear saved preferences.
 localStorage.clear();
 const reactions={human:0,cat:0,dog:0};try{// 1. Autonomous timetable boundaries on a pinned Beijing date (Thursday profile).
+const captions=[];
 for(const [time,expected] of [['07:19:55','sleep'],['07:44:55','dress'],['11:59:55','work'],['18:59:55','dinner']]){
-  const w=await load('?d=2026-09-17&t='+time);
-  check(w.PortraitPreview.life.schedule===expected,time+' -> '+w.PortraitPreview.life.schedule);
-  report('PASS '+time+' → '+expected);
+  const w=await load('?d=2026-09-17&t='+time),p=w.PortraitPreview;
+  check(p.life.schedule===expected,time+' -> '+p.life.schedule);
+  const caption=(w.document.querySelector('#scene-caption').textContent||'').split(' · ');
+  check(caption.length===3&&caption[2].trim().length>0,'Caption shows the current behaviour: '+caption.join(' · '));
+  check([p.life.label,p.life.title].includes(caption[2]),'Caption matches the life state, got "'+caption[2]+'"');
+  captions.push(caption[2]);
+  report('PASS '+time+' → '+expected+'（'+caption[2]+'）');
 }
+check(new Set(captions).size>=3,'The caption tracks different activities: '+captions.join(' / '));
 // 2. Resident clicks: the human never changes route or timetable; pets add bounded interaction states.
 for(const time of ['15:00:00','20:00:00']){
   const w=await load('?d=2026-09-17&t='+time),p=w.PortraitPreview;let moving=0,acting=0;
