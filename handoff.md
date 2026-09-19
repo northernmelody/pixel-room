@@ -8,7 +8,7 @@
 
 - 当前分支：`master`；本轮改动由多次提交组成：横版入口脚本路径修复、竖版点击范围收束与交互迁移、第二批 6 项竖版需求（提交顺序与哈希以 `git log` 为准）。
 - GitHub：`https://github.com/northernmelody/pixel-room.git`。
-- Vercel Production：`https://pixel-room-eight.vercel.app`，本轮第二次部署（deployment `dpl_4iHNEY7oPcSfXPSNgUdB9H8Z9B5q`，`READY`），线上包含横版入口修复、竖版点击范围收束与第二批 6 项需求（含 Still here 改名与默认开启声音）。
+- Vercel Production：`https://pixel-room-eight.vercel.app`，本轮第三次部署（deployment `https://pixel-room-11tvoclyn-northernmelodys-projects.vercel.app`，`READY`），线上包含横版入口修复、竖版点击范围收束、第二批 6 项需求与左上角「当前行为」说明条。
 - 主入口现在是竖版小屋：根路径会进入 `/portrait/`；设置页为 `/setting/`。
 - 原横版页面已迁移到次级入口：`/classic/`。横版原始脚本、样式和资源仍复用仓库根目录的 `js/`、`css/`、`assets/`。
 - 竖版已完成自主作息、宠物、庭院、灯光、信件、天气、音频入口、电脑频道和响应式入口验证。
@@ -31,7 +31,7 @@ node portrait/tools/viewport-check.cjs    # 多视口回归（320/375/390/430/14
 
 当前结果：契约测试通过（含点击范围白名单 16 目标、衣柜/冰箱随机内容、姿势回应、猫摸链/狗跟随、吉他拒绝规则与洗漱豁免、通话当前句）、Node 语法检查通过、原横版 23 个受保护文件未发生内容变化（哈希已随横版修复与改名刷新）。竖版真实浏览器回归 14 项 ALL PASS、页面异常 0（含说明条显示当前行为且与生活状态一致），证据见 `portrait/artifacts/browser-check.log`；多视口回归 5 档 ALL PASS，截图 `_shots/viewport-*.png`；功能截图 `_shots/portrait-browser-check.png`、`_shots/still-here-shower.png`、`still-here-wardrobe.png`、`still-here-fridge.png`、`still-here-reaction.png`、`still-here-cat.png`、`still-here-dog.png`。横版入口真实浏览器验证 ALL PASS 见 `_shots/classic-entry-check.png`（`node _tools/check-classic.cjs`，覆盖 `PixelRoom.UI`/`LifeUI` 载入、时钟走动、画布非空、设置面板开合与零页面错误）。旧版横向坐标冒烟脚本中仍有 3 个已知不等价失败，详见 `portrait/artifacts/legacy-smokes.json`。`portrait/artifacts/s6-browser-results.txt` 早于星期档案改造，已过时。
 
-线上验收（部署后）：`/`、`/portrait/`、`/classic/`、`/setting/`、`/portrait/js/main.js`、`/portrait/js/store.js`、`/classic/index.html` 全部返回 200；`main.js`、`scene.js`、`store.js`、`sprites.generated.js`、`portrait/index.html`、`classic/index.html` 的线上内容与提交内容逐字节一致（LF 归一化）。生产域名真实浏览器验收：竖版 11 项 ALL PASS、零页面错误（标题/品牌为 Still here、页内无设置与横版链接、声音默认开启、画布已绘制、16 个可操作目标、冰箱可点），截图 `_shots/still-here-production.png`；横版入口 ALL PASS，截图 `_shots/classic-prod-check.png`（`node _tools/check-classic.cjs https://pixel-room-eight.vercel.app/classic/ --out _shots/classic-prod-check.png`）。
+线上验收（部署后）：`/`、`/portrait/`、`/classic/`、`/setting/`、`/portrait/js/main.js`、`/portrait/style.css` 全部返回 200；`main.js`、`style.css`、`portrait/index.html`、`scene.js` 的线上内容与提交内容逐字节一致（LF 归一化）。生产域名真实浏览器验收：多视口回归 5 档 ALL PASS，线上说明条显示「秋日 · 阳光正好 · 走到电脑前」且时钟在画面内、零页面错误（`node portrait/tools/viewport-check.cjs https://pixel-room-eight.vercel.app/portrait/?d=2026-09-17&t=16:30`）；横版入口 ALL PASS，截图 `_shots/classic-prod-check.png`。
 
 ### 入口约定
 
