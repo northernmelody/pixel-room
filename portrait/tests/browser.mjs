@@ -141,19 +141,18 @@ for(const time of ['15:00:00','20:00:00']){
   check(p.pets.cat.state==='underbed','The cat hides under the bed, got '+p.pets.cat.state);
   report('PASS 连续闪灯三次后猫躲进床底');
 }
-// 7. MOMO call card: only during the call, and it opens the full record.
+// 7. In-person visit replaces the old recurring phone/call card.
 {
   const w=await load('?d=2026-09-14&t=21:00'),p=w.PortraitPreview,card=w.document.querySelector('#call-card');
-  check(p.life.schedule==='call','Monday call window, got '+p.life.schedule);
-  check(!card.hidden,'Call card is visible during the call');
-  check(card.textContent.includes('MOMO'),'Call card names the caller');
-  card.dispatchEvent(new w.MouseEvent('click',{bubbles:true}));await sleep(60);
-  check(dialogOpen(w),'Call card opens the record');
-  check(w.document.querySelectorAll('#details-content .call-line').length>=12,'Full call record listed');
-  closeDialog(w);
+  check(p.life.schedule==='FIREPLACE_CHAT','Monday fireplace window, got '+p.life.schedule);
+  check(p.life.girlfriend.presence==='VISITING','Girlfriend is visiting');
+  check(p.life.girlfriend.pose==='chat','Girlfriend uses the fireplace chat pose');
+  check(card.hidden,'Legacy call card stays hidden');
+  check(!/手机|通话/.test(w.document.querySelector('#scene-caption').textContent),'Caption no longer reports phone/call');
   const w2=await load('?d=2026-09-14&t=15:00');
-  check(w2.document.querySelector('#call-card').hidden,'Call card is hidden outside the call');
-  report('PASS 通话卡片只在通话期间出现，点击可读完整记录');
+  check(w2.PortraitPreview.life.girlfriend.presence==='AWAY','Girlfriend is absent in daytime');
+  check(w2.document.querySelector('#call-card').hidden,'Call card is hidden outside visits too');
+  report('PASS 女友晚间到访，白天离开，旧通话卡片不再出现');
 }
 // 8. Branding, hidden in-page entries and the sound default.
 {

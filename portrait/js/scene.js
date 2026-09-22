@@ -219,6 +219,13 @@ function illumination(ctx,state){
 // Click responses are posture animations like the horizontal build, never text bubbles.
 const REACT_FRAMES={wave:3,nod:2,startle:1,lookback:1,lookup:1};
 const reactVariant=(reaction,motion)=>reaction==='wave'?'wave'+Math.floor(motion*8)%3:reaction==='nod'?'nod'+Math.floor(motion*6)%2:reaction;
+function drawBaldHead(ctx,y=-34){
+  // Cover the legacy hair pixels with the existing head silhouette and face.
+  // The footprint remains 14×14, so every pose keeps its original anchor.
+  rect(ctx,-7,y,14,14,'#d9c8a0');rect(ctx,-6,y+1,12,11,'#f5e6c8');rect(ctx,-6,y+11,12,2,'#d9c8a0');
+  rect(ctx,-5,y+2,2,1,'#fdf8e8');rect(ctx,-3,y+7,2,2,'#1a1a1a');rect(ctx,1,y+7,2,2,'#1a1a1a');
+  rect(ctx,-2,y+10,4,1,'#c47a5a');rect(ctx,-3,y+1,6,1,'#fff3d7aa');
+}
 function drawActor(ctx,actor){
   const bob=actor.walking?Math.round(Math.abs(Math.sin(actor.step))*1.2):0;
   const swing=actor.pose==='swing',sway=swing?Math.sin(actor.motion*1.8)*3:0;
@@ -229,16 +236,16 @@ function drawActor(ctx,actor){
   if(reaction){
     // The horizontal build stands the character up for the reaction, then continues.
     rect(ctx,-7,-1,14,2,'#1d20243d');
-    drawItem(ctx,'human',-human.anchorX,-human.anchorY-bob,{reaction:reactVariant(reaction,actor.motion)});
+    const variant=reactVariant(reaction,actor.motion);drawItem(ctx,'human',-human.anchorX,-human.anchorY-bob,{reaction:variant});drawBaldHead(ctx,variant==='nod0'||variant==='lookup'?-35:variant==='nod1'?-33:-34);
     ctx.restore();return;
   }
   if(actor.pose==='sleep'){
-    rect(ctx,-12,-23,10,8,'#e1af87');rect(ctx,-13,-25,11,3,'#574030');rect(ctx,-13,-23,3,6,'#574030');rect(ctx,-8,-19,3,1,'#5c4038');
+    rect(ctx,-12,-23,10,8,'#e1af87');rect(ctx,-13,-24,11,3,'#f5e6c8');rect(ctx,-13,-22,3,5,'#d9c8a0');rect(ctx,-8,-19,3,1,'#5c4038');
     ctx.restore();return;
   }
-  const seated=['toilet','read','call','guitar','swing','phone','work','game','eat','eatSnack'].includes(actor.pose)&&!actor.walking;
+  const seated=['toilet','read','call','guitar','swing','phone','work','game','eat','eatSnack','coupleSit','coupleGame','coupleSnack','coupleRead','coupleIdle'].includes(actor.pose)&&!actor.walking;
   const showering=actor.pose==='shower';
-  rect(ctx,-7,-1,14,2,'#1d20243d');ctx.save();if(seated){ctx.beginPath();ctx.rect(-16,-40,34,30);ctx.clip();}drawItem(ctx,'human',-human.anchorX,-human.anchorY-bob,{shower:showering});ctx.restore();
+  rect(ctx,-7,-1,14,2,'#1d20243d');ctx.save();if(seated){ctx.beginPath();ctx.rect(-16,-40,34,30);ctx.clip();}drawItem(ctx,'human',-human.anchorX,-human.anchorY-bob,{shower:showering});drawBaldHead(ctx,-34-bob);ctx.restore();
   if(seated){rect(ctx,-5,-11,11,4,'#3f70a9');rect(ctx,3,-8,8,3,'#365f92');rect(ctx,8,-6,3,3,'#3a3028');}
   // The shower sprite is already undressed, so the clothing and held-item overlays stay off.
   if(!showering){
@@ -260,7 +267,45 @@ function drawActor(ctx,actor){
   if(actor.pose==='exercise'){const lift=Math.sin(actor.motion*5)>0?0:4;rect(ctx,-10,-24-lift,4,2,'#4575ad');rect(ctx,6,-24-lift,4,2,'#4575ad');}
   if(actor.pose==='guitar'){rect(ctx,-2,-19,10,12,'#8a5429');rect(ctx,7,-23,2,15,'#56351f');}
   if(actor.held==='phone')rect(ctx,8,-23,3,5,'#30465d');if(actor.held==='book')rect(ctx,5,-17,8,5,'#b96b55');if(actor.held==='cup')rect(ctx,8,-18,3,4,'#d8e0df');
+  if(actor.held==='controller'){rect(ctx,-1,-18,7,3,'#202938');rect(ctx,-2,-18,2,3,'#34a8d8');rect(ctx,6,-18,2,3,'#e84b4b');}
   ctx.restore();
+}
+
+function drawGirlfriend(ctx,girlfriend,motion=0){
+  if(!girlfriend)return;const p=girlfriend.location||girlfriend,walking=girlfriend.pose==='walk',seated=!walking;
+  const bob=walking?Math.round(Math.abs(Math.sin(motion*8))):0;ctx.save();ctx.translate(Math.round(p.x),Math.round(p.y-bob));if(girlfriend.facing<0)ctx.scale(-1,1);
+  rect(ctx,-7,-1,14,2,'#1d20243d');
+  // Legs/body share the male actor's scale while the lavender palette and bob
+  // create a distinct silhouette.
+  if(seated){rect(ctx,-5,-11,10,4,'#7659a9');rect(ctx,2,-8,8,3,'#543d7c');rect(ctx,8,-6,3,3,'#33283a');}
+  else{const stride=Math.sin(motion*16)>0?1:-1;rect(ctx,-4+stride,-12,3,12,'#543d7c');rect(ctx,1-stride,-12,3,12,'#44325f');rect(ctx,-4+stride,-2,3,2,'#33283a');rect(ctx,1-stride,-2,3,2,'#2c2233');}
+  rect(ctx,-4,-22,8,12,'#8d6bc0');rect(ctx,-3,-20,6,1,'#b89ad8');rect(ctx,-6,-21,3,8,'#7659a9');rect(ctx,3,-21,3,8,'#7659a9');
+  rect(ctx,-7,-35,14,15,'#5b3b78');rect(ctx,-6,-34,12,12,'#f1c7aa');rect(ctx,-7,-35,14,5,'#76509a');rect(ctx,-7,-31,3,10,'#684486');rect(ctx,4,-31,3,10,'#684486');
+  rect(ctx,-3,-28,2,2,'#2b2431');rect(ctx,2,-28,2,2,'#2b2431');rect(ctx,-2,-24,4,1,'#b96876');rect(ctx,-5,-34,6,1,'#a17abe');
+  if(girlfriend.pose==='game'){rect(ctx,-2,-18,7,3,'#202938');rect(ctx,-3,-18,2,3,'#34a8d8');rect(ctx,5,-18,2,3,'#e84b4b');}
+  if(girlfriend.pose==='read')rect(ctx,-1,-18,8,5,'#cf8b80');
+  if(girlfriend.pose==='snack'){rect(ctx,5,-18,3,4,'#e8dfcb');rect(ctx,6,-19,1,1,'#fff4d2');}
+  ctx.restore();
+}
+
+function drawTopLeisure(ctx,couple,motion=0){
+  // Shared rug and low table keep the bedroom identity while defining a compact
+  // leisure zone between the bed and the right wall.
+  rect(ctx,96,137,52,12,'#8f5b55');rect(ctx,98,139,48,8,'#b87865');for(let x=100;x<145;x+=6)rect(ctx,x,140,3,1,'#e0a579');
+  rect(ctx,108,139,22,4,'#6b422b');rect(ctx,111,143,3,6,'#4b3427');rect(ctx,125,143,3,6,'#4b3427');
+  rect(ctx,111,137,3,2,'#e8dfcb');rect(ctx,126,137,3,2,'#d78b72');
+  // TV and media console.
+  rect(ctx,117,101,31,25,'#2b2b35');rect(ctx,119,103,27,20,'#101827');
+  if(couple?.tvMode==='movie'){rect(ctx,120,104,25,18,'#678aa4');rect(ctx,120,115,25,7,'#344c5d');rect(ctx,128,109,7,6,'#d9b07b');rect(ctx,136,106,5,3,'#dbe7e2');}
+  if(couple?.tvMode==='game'){rect(ctx,120,104,25,18,'#75a9cd');rect(ctx,120,115,25,7,'#5c8b55');rect(ctx,124,112,3,5,'#d96a4a');rect(ctx,137,109,4,8,'#6a9b52');rect(ctx,131,116,3,4,'#f1c74e');}
+  if(couple?.tvMode==='off')rect(ctx,121,105,23,16,'#182031');
+  rect(ctx,116,126,33,5,'#6b4a35');rect(ctx,119,131,3,7,'#4b3529');rect(ctx,143,131,3,7,'#4b3529');
+  // Docked Switch-style console: silhouette and cyan/red controls, no logo.
+  rect(ctx,128,127,9,4,'#202633');rect(ctx,126,126,3,6,'#27a7d2');rect(ctx,137,126,3,6,'#e84c4b');rect(ctx,127,128,1,1,'#d8f4fb');rect(ctx,138,129,1,1,'#ffe5e2');
+  // Residential fireplace, kept clear of the staircase at x >= 173.
+  rect(ctx,151,111,17,38,'#6e4938');rect(ctx,149,109,21,4,'#875b43');rect(ctx,153,119,13,23,'#2b2220');rect(ctx,151,142,17,5,'#8b6147');rect(ctx,149,147,21,3,'#5a4033');
+  if(couple?.fireplaceOn){const flick=Math.floor(motion*5)%3;rect(ctx,155,132-flick,9,9,'#e45d32');rect(ctx,157,127+flick,5,12,'#ff9b36');rect(ctx,159,125,2,10,'#ffe47c');}
+  else{rect(ctx,155,137,9,3,'#4a332b');rect(ctx,157,134,5,3,'#5b3d2c');}
 }
 
 const CLOTH_COLORS=['#c66d42','#6e62a8','#4a7bd0','#7fa8c8','#c94f6d','#e0b352','#6f9b6a','#b46a8a','#3f6f8f','#d98f5a'];
@@ -335,15 +380,18 @@ function ambientObjects(ctx,state){if(state.detail===false)return;const t=Date.n
 export function drawScene(canvas,state,runtime={}){
   const ctx=canvas.getContext('2d');
   ctx.setTransform(CONFIG.pixel,0,0,CONFIG.pixel,0,0);ctx.imageSmoothingEnabled=false;
-  const {actor,life,pets,world,weather,props}=runtime;sky(ctx,state);shell(ctx,state);stairs(ctx);garden(ctx,state,actor);
+  const {actor,life,pets,world,weather,props}=runtime,couple=life?.couple;sky(ctx,state);shell(ctx,state);stairs(ctx);garden(ctx,state,actor);
   const hour=runtime.time?.hour??12,options={night:state.theme==='night',season:state.season,blanket:hour>=22||hour<8?'cover':hour<10?'made':'messy',cup:hour<12?4:hour<18?2:0,bowl:world?.bowls?.cat??3,dogBowl:world?.bowls?.dog??3};
   for(const item of getVisibleItems(state,world).filter(item=>!['actor.human','actor.cat','actor.dog'].includes(item.id)).filter(item=>item.id!=='bedroom.guitar'||life?.held!=='guitar').filter(item=>item.id!=='kitchen.package'||world?.pkg?.state==='arrived')){
     if(!ITEM_META[item.art])throw new Error('Missing original art: '+item.art);
     drawItem(ctx,item.art,item.x,item.y,{...options,...item.options,lampOn:item.lampIndex!==undefined?state.lamps[item.lampIndex]:true});
   }
   drawLifeProps(ctx,life||{},world,props);
+  drawTopLeisure(ctx,couple,life?.motion||0);
   ambientObjects(ctx,state);
-  if(actor)drawActor(ctx,actor);
+  const visiting=couple?.presence==='VISITING',actorView=visiting&&couple.male?{...actor,x:couple.male.x,y:couple.male.y,pose:couple.malePose,walking:false,held:couple.activity==='SWITCH_COOP'?'controller':couple.activity==='SNACK_TIME'?'cup':couple.activity==='QUIET_READING'?'book':''}:actor;
+  if(actorView)drawActor(ctx,actorView);
+  if(visiting&&life?.girlfriend?.location)drawGirlfriend(ctx,life.girlfriend,life.motion||0);
   drawPet(ctx,pets?.cat);drawPet(ctx,pets?.dog);
   drawFrontProps(ctx,life);
   LAMPS.filter(l=>l.kind==='ceiling').forEach((lamp,i)=>ceilingLamp(ctx,lamp,state.lamps[i]));
@@ -353,6 +401,7 @@ export function drawScene(canvas,state,runtime={}){
   if(state.theme==='night'){
     const g=ctx.createRadialGradient(193,329,0,193,329,18);g.addColorStop(0,'#f3c27524');g.addColorStop(1,'#f3c27500');ctx.fillStyle=g;ctx.fillRect(175,308,32,37);
   }
+  return {girlfriendActors:visiting&&life?.girlfriend?.location?1:0,maleActors:actorView?1:0};
 }
 
 export function hitTest(x,y,state,runtime={}){
