@@ -18,7 +18,14 @@ function runtime(){const petState=pets.snapshots(),lifeState=life.snapshot(),tim
 function note(text){$('item-hint').textContent=text;$('item-hint').classList.add('visible');clearTimeout(hintTimer);hintTimer=setTimeout(()=>$('item-hint').classList.remove('visible'),2200);}
 function stateText(){const current=life.snapshot();$('lyrics').hidden=!current.lyric;$('lyrics').textContent=current.lyric||'';}
 // Caption: season and light plus what the resident is doing right now.
-function captionText(state,current){const light=state.theme==='night'?'灯火可亲':'阳光正好',doing=current.label||current.title||'平凡的一天';return SEASONS[state.season]+'日 · '+light+' · '+doing;}
+function captionText(state,current){
+  const activity=current.couple?.activity,doing=current.label||current.title||'平凡的一天';
+  const bedtime=['BED_PREP','BED_CHAT','CUDDLE','KISS_GOODNIGHT','UNDER_BLANKET_INTIMACY','SETTLING_TO_SLEEP','SLEEP_TOGETHER'].includes(activity);
+  const morning=['WAKE_TOGETHER','DEPARTING'].includes(activity);
+  if(bedtime)return SEASONS[state.season]+'夜 · '+doing;
+  if(morning)return SEASONS[state.season]+'晨 · '+doing;
+  const light=state.theme==='night'?'灯火可亲':'阳光正好';return SEASONS[state.season]+'日 · '+light+' · '+doing;
+}
 function render(){const state=resolvePreferences(preferences,now()),view=runtime();drawScene(canvas,state,view);stateText();$('scene-caption').textContent=captionText(state,view.life);updateCallCard();}
 function element(tag,text,className){const el=document.createElement(tag);if(text!==undefined&&text!==null)el.textContent=text;if(className)el.className=className;return el;}
 function setDialog(title,kicker='ROOM OBJECTS'){const content=$('details-content');$('details-kicker').textContent=kicker;content.replaceChildren(element('h2',title));content.firstChild.id='details-title';if(!dialog.open)dialog.showModal();return content;}

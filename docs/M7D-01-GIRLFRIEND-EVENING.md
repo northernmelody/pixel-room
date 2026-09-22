@@ -1,5 +1,7 @@
 # M7D-01 — Girlfriend Evening Visit
 
+> 历史规格说明：M7D-02 已取代本文“活动窗口结束即离开”的生命周期。当前权威留宿规范见 [`M7D-02-COUPLE-OVERNIGHT.md`](M7D-02-COUPLE-OVERNIGHT.md)。本文保留用于记录 M7D-01 的实现边界。
+
 日期：2026-09-22。生产入口：`/portrait/`。
 
 ## 最终领域状态

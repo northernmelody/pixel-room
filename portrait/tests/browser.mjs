@@ -33,14 +33,15 @@ document.querySelector('#run').onclick=async()=>{results.textContent='';
 localStorage.clear();
 const reactions={human:0,cat:0,dog:0};try{// 1. Autonomous timetable boundaries on a pinned Beijing date (Thursday profile).
 const captions=[];
-for(const [time,expected] of [['07:19:55','sleep'],['07:44:55','dress'],['11:59:55','work'],['18:59:55','dinner']]){
+for(const [time,expected] of [['07:19:55','SLEEP_TOGETHER'],['07:44:55','dress'],['11:59:55','work'],['18:59:55','dinner']]){
   const w=await load('?d=2026-09-17&t='+time),p=w.PortraitPreview;
   check(p.life.schedule===expected,time+' -> '+p.life.schedule);
   const caption=(w.document.querySelector('#scene-caption').textContent||'').split(' · ');
-  check(caption.length===3&&caption[2].trim().length>0,'Caption shows the current behaviour: '+caption.join(' · '));
-  check([p.life.label,p.life.title].includes(caption[2]),'Caption matches the life state, got "'+caption[2]+'"');
-  captions.push(caption[2]);
-  report('PASS '+time+' → '+expected+'（'+caption[2]+'）');
+  const behaviour=caption.at(-1)?.trim()||'';
+  check(caption.length>=2&&behaviour.length>0,'Caption shows the current behaviour: '+caption.join(' · '));
+  check([p.life.label,p.life.title].includes(behaviour),'Caption matches the life state, got "'+behaviour+'"');
+  captions.push(behaviour);
+  report('PASS '+time+' → '+expected+'（'+behaviour+'）');
 }
 check(new Set(captions).size>=3,'The caption tracks different activities: '+captions.join(' / '));
 // 2. Resident clicks: the human never changes route or timetable; pets add bounded interaction states.
@@ -141,7 +142,7 @@ for(const time of ['15:00:00','20:00:00']){
   check(p.pets.cat.state==='underbed','The cat hides under the bed, got '+p.pets.cat.state);
   report('PASS 连续闪灯三次后猫躲进床底');
 }
-// 7. In-person visit replaces the old recurring phone/call card.
+// 7. The visit continues through a deterministic overnight stay and morning departure.
 {
   const w=await load('?d=2026-09-14&t=21:00'),p=w.PortraitPreview,card=w.document.querySelector('#call-card');
   check(p.life.schedule==='FIREPLACE_CHAT','Monday fireplace window, got '+p.life.schedule);
@@ -149,10 +150,26 @@ for(const time of ['15:00:00','20:00:00']){
   check(p.life.girlfriend.pose==='chat','Girlfriend uses the fireplace chat pose');
   check(card.hidden,'Legacy call card stays hidden');
   check(!/手机|通话/.test(w.document.querySelector('#scene-caption').textContent),'Caption no longer reports phone/call');
-  const w2=await load('?d=2026-09-14&t=15:00');
-  check(w2.PortraitPreview.life.girlfriend.presence==='AWAY','Girlfriend is absent in daytime');
+  const chat=await load('?d=2026-09-14&t=22:45:00');
+  check(chat.PortraitPreview.life.couple.activity==='BED_CHAT','Monday enters BED_CHAT');
+  check(chat.PortraitPreview.life.couple.bedState==='BED_OCCUPIED_CHAT','Chat uses the occupied double bed');
+  const intimate=await load('?d=2026-09-18&t=23:55:00');
+  check(intimate.PortraitPreview.life.couple.activity==='UNDER_BLANKET_INTIMACY','Friday includes the abstract intimacy state');
+  check(intimate.PortraitPreview.life.couple.lightState==='DIM','Intimacy stays dim');
+  check(!/性|亲密/.test(intimate.document.querySelector('#scene-caption').textContent),'Status text remains discreet');
+  const sleeping=await load('?d=2026-09-15&t=03:00:00'),sleepState=JSON.stringify(sleeping.PortraitPreview.life.couple);
+  check(sleeping.PortraitPreview.life.girlfriend.presence==='STAYING_OVERNIGHT','Direct 03:00 load keeps girlfriend overnight');
+  check(sleeping.PortraitPreview.life.couple.activity==='SLEEP_TOGETHER','Direct 03:00 load reconstructs shared sleep');
+  check(sleeping.PortraitPreview.life.couple.bedState==='BED_OCCUPIED_SLEEP','Shared sleep uses the two-person bed');
+  const sleepingAgain=await load('?d=2026-09-15&t=03:00:00');
+  check(JSON.stringify(sleepingAgain.PortraitPreview.life.couple)===sleepState,'Reloading the same timestamp is deterministic');
+  const waking=await load('?d=2026-09-15&t=07:22:00');
+  check(waking.PortraitPreview.life.couple.activity==='WAKE_TOGETHER','Canonical 07:20 wake becomes WAKE_TOGETHER');
+  const w2=await load('?d=2026-09-15&t=07:36:00');
+  check(w2.PortraitPreview.life.girlfriend.presence==='AWAY','Girlfriend leaves after the morning departure');
+  check(w2.PortraitPreview.life.couple.bedState==='BED_EMPTY_DAY','Bed returns to its daytime empty state');
   check(w2.document.querySelector('#call-card').hidden,'Call card is hidden outside visits too');
-  report('PASS 女友晚间到访，白天离开，旧通话卡片不再出现');
+  report('PASS 女友晚间到访后留宿、共同睡眠与醒来，早晨离开；刷新可确定性重建');
 }
 // 8. Branding, hidden in-page entries and the sound default.
 {

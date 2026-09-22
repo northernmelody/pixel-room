@@ -305,7 +305,47 @@ function drawTopLeisure(ctx,couple,motion=0){
   // Residential fireplace, kept clear of the staircase at x >= 173.
   rect(ctx,151,111,17,38,'#6e4938');rect(ctx,149,109,21,4,'#875b43');rect(ctx,153,119,13,23,'#2b2220');rect(ctx,151,142,17,5,'#8b6147');rect(ctx,149,147,21,3,'#5a4033');
   if(couple?.fireplaceOn){const flick=Math.floor(motion*5)%3;rect(ctx,155,132-flick,9,9,'#e45d32');rect(ctx,157,127+flick,5,12,'#ff9b36');rect(ctx,159,125,2,10,'#ffe47c');}
+  else if(couple?.fireplaceState==='embers'){rect(ctx,155,137,9,3,'#5b3328');rect(ctx,158,136,4,2,'#b84f2d');rect(ctx,160,135,1,1,'#e99b45');}
   else{rect(ctx,155,137,9,3,'#4a332b');rect(ctx,157,134,5,3,'#5b3d2c');}
+}
+
+function drawSleepHead(ctx,x,y,kind,awake=false){
+  if(kind==='male'){
+    rect(ctx,x,y,9,8,'#d9c8a0');rect(ctx,x+1,y,7,7,'#f5e6c8');rect(ctx,x+2,y+1,4,1,'#fff3d7aa');
+    if(awake){rect(ctx,x+2,y+4,1,1,'#242028');rect(ctx,x+6,y+4,1,1,'#242028');}else{rect(ctx,x+2,y+4,2,1,'#76594e');rect(ctx,x+5,y+4,2,1,'#76594e');}
+  }else{
+    rect(ctx,x,y-1,10,10,'#5b3b78');rect(ctx,x+1,y,8,8,'#f1c7aa');rect(ctx,x,y-1,10,4,'#76509a');rect(ctx,x,y+2,2,7,'#684486');rect(ctx,x+8,y+2,2,7,'#684486');
+    if(awake){rect(ctx,x+3,y+4,1,1,'#2b2431');rect(ctx,x+6,y+4,1,1,'#2b2431');}else{rect(ctx,x+2,y+4,2,1,'#76546d');rect(ctx,x+6,y+4,2,1,'#76546d');}
+  }
+}
+function drawCoupleBed(ctx,couple,motion=0){
+  const state=couple?.bedState||'BED_EMPTY_DAY',occupied=state.startsWith('BED_OCCUPIED');
+  // Shallow 3/4 double bed: headboard, mattress, two pillows and one shared blanket.
+  rect(ctx,43,117,52,5,'#69472f');rect(ctx,45,114,48,4,'#875d3d');rect(ctx,45,121,48,25,'#c8b89d');
+  rect(ctx,47,122,20,8,'#eee6d6');rect(ctx,70,122,20,8,'#eee6d6');rect(ctx,48,123,18,1,'#fffaf0');rect(ctx,71,123,18,1,'#fffaf0');
+  rect(ctx,43,145,52,5,'#6a4933');rect(ctx,46,150,5,2,'#4d372a');rect(ctx,87,150,5,2,'#4d372a');
+  if(!occupied){
+    rect(ctx,47,132,44,13,state==='BED_READY_NIGHT'?'#6988a5':'#7898b3');rect(ctx,48,132,42,2,'#9ab2c3');rect(ctx,48,143,42,2,'#53718d');
+    if(state==='BED_EMPTY_DAY'){rect(ctx,78,136,12,8,'#5f7f9d');rect(ctx,79,136,10,1,'#adc0cc');}
+    return;
+  }
+  let maleX=59,girlX=78,headY=126,blanketY=136,awake=false;
+  if(state==='BED_OCCUPIED_CUDDLE'){maleX=64;girlX=74;}
+  if(state==='BED_OCCUPIED_INTIMATE'){maleX=64;girlX=74;headY=127;blanketY=132;}
+  if(state==='BED_OCCUPIED_SLEEP'){maleX=62;girlX=76;}
+  if(state==='BED_OCCUPIED_WAKE'){maleX=59;girlX=79;awake=true;}
+  if(couple?.activity==='KISS_GOODNIGHT'){maleX=66;girlX=73;}
+  rect(ctx,maleX+1,headY+7,8,9,'#d9c8a0');rect(ctx,girlX+1,headY+7,8,9,'#8061aa');
+  drawSleepHead(ctx,maleX,headY,'male',awake);drawSleepHead(ctx,girlX,headY,'girlfriend',awake);
+  const hush=state==='BED_OCCUPIED_INTIMATE'&&Math.floor(motion/4)%2?1:0;
+  rect(ctx,47,blanketY-hush,44,145-blanketY+hush,'#6988a5');rect(ctx,48,blanketY-hush,42,2,'#9ab2c3');rect(ctx,48,143,42,2,'#53718d');
+  rect(ctx,47,145,44,2,'#4f6e89');
+}
+
+function bedroomLighting(state,couple){
+  if(!couple||!['WARM_BEDSIDE','DIM','SLEEP'].includes(couple.lightState))return state;
+  const lamps=[...state.lamps];lamps[0]=false;lamps[5]=couple.lightState==='WARM_BEDSIDE';
+  return {...state,theme:'night',lamps};
 }
 
 const CLOTH_COLORS=['#c66d42','#6e62a8','#4a7bd0','#7fa8c8','#c94f6d','#e0b352','#6f9b6a','#b46a8a','#3f6f8f','#d98f5a'];
@@ -380,18 +420,20 @@ function ambientObjects(ctx,state){if(state.detail===false)return;const t=Date.n
 export function drawScene(canvas,state,runtime={}){
   const ctx=canvas.getContext('2d');
   ctx.setTransform(CONFIG.pixel,0,0,CONFIG.pixel,0,0);ctx.imageSmoothingEnabled=false;
-  const {actor,life,pets,world,weather,props}=runtime,couple=life?.couple;sky(ctx,state);shell(ctx,state);stairs(ctx);garden(ctx,state,actor);
+  const {actor,life,pets,world,weather,props}=runtime,couple=life?.couple;state=bedroomLighting(state,couple);sky(ctx,state);shell(ctx,state);stairs(ctx);garden(ctx,state,actor);
   const hour=runtime.time?.hour??12,options={night:state.theme==='night',season:state.season,blanket:hour>=22||hour<8?'cover':hour<10?'made':'messy',cup:hour<12?4:hour<18?2:0,bowl:world?.bowls?.cat??3,dogBowl:world?.bowls?.dog??3};
-  for(const item of getVisibleItems(state,world).filter(item=>!['actor.human','actor.cat','actor.dog'].includes(item.id)).filter(item=>item.id!=='bedroom.guitar'||life?.held!=='guitar').filter(item=>item.id!=='kitchen.package'||world?.pkg?.state==='arrived')){
+  for(const item of getVisibleItems(state,world).filter(item=>!['actor.human','actor.cat','actor.dog'].includes(item.id)).filter(item=>item.id!=='bedroom.bed').filter(item=>item.id!=='bedroom.guitar'||life?.held!=='guitar').filter(item=>item.id!=='kitchen.package'||world?.pkg?.state==='arrived')){
     if(!ITEM_META[item.art])throw new Error('Missing original art: '+item.art);
     drawItem(ctx,item.art,item.x,item.y,{...options,...item.options,lampOn:item.lampIndex!==undefined?state.lamps[item.lampIndex]:true});
   }
+  drawCoupleBed(ctx,couple,life?.motion||0);
   drawLifeProps(ctx,life||{},world,props);
   drawTopLeisure(ctx,couple,life?.motion||0);
   ambientObjects(ctx,state);
-  const visiting=couple?.presence==='VISITING',actorView=visiting&&couple.male?{...actor,x:couple.male.x,y:couple.male.y,pose:couple.malePose,walking:false,held:couple.activity==='SWITCH_COOP'?'controller':couple.activity==='SNACK_TIME'?'cup':couple.activity==='QUIET_READING'?'book':''}:actor;
-  if(actorView)drawActor(ctx,actorView);
-  if(visiting&&life?.girlfriend?.location)drawGirlfriend(ctx,life.girlfriend,life.motion||0);
+  const present=couple?.presence&&couple.presence!=='AWAY',bedOccupied=!!couple?.bedState?.startsWith('BED_OCCUPIED');
+  const actorView=present&&couple.male&&!bedOccupied?{...actor,x:couple.male.x,y:couple.male.y,pose:couple.malePose,walking:false,held:couple.activity==='SWITCH_COOP'?'controller':couple.activity==='SNACK_TIME'?'cup':couple.activity==='QUIET_READING'?'book':''}:actor;
+  if(actorView&&!bedOccupied)drawActor(ctx,actorView);
+  if(present&&!bedOccupied&&life?.girlfriend?.location)drawGirlfriend(ctx,life.girlfriend,life.motion||0);
   drawPet(ctx,pets?.cat);drawPet(ctx,pets?.dog);
   drawFrontProps(ctx,life);
   LAMPS.filter(l=>l.kind==='ceiling').forEach((lamp,i)=>ceilingLamp(ctx,lamp,state.lamps[i]));
@@ -401,7 +443,7 @@ export function drawScene(canvas,state,runtime={}){
   if(state.theme==='night'){
     const g=ctx.createRadialGradient(193,329,0,193,329,18);g.addColorStop(0,'#f3c27524');g.addColorStop(1,'#f3c27500');ctx.fillStyle=g;ctx.fillRect(175,308,32,37);
   }
-  return {girlfriendActors:visiting&&life?.girlfriend?.location?1:0,maleActors:actorView?1:0};
+  return {girlfriendActors:present&&(bedOccupied||life?.girlfriend?.location)?1:0,maleActors:bedOccupied||actorView?1:0,bedState:couple?.bedState||'BED_EMPTY_DAY'};
 }
 
 export function hitTest(x,y,state,runtime={}){

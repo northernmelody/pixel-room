@@ -38,7 +38,7 @@ function dailyBlocks(){
   if(m<1380){m=push(blocks,m,1380-m,'sofa');}if(m<1440)push(blocks,m,1440-m,'sleep');
   return blocks;
 }
-function currentSchedule(){const couple=resolveCoupleState();if(couple.presence==='VISITING')return[couple.window.start,couple.window.end,couple.activity];const m=minuteOfDay();const blocks=dailyBlocks();const base=blocks.find(([a,b])=>m>=a&&m<b)||blocks[blocks.length-1];if(base[2]!=='sleep')return base;const seed=hash(dateKey()+'|night');if(seed%10>=3)return base;const nightMinute=m<440?m+1440-1380:m-1380,eventAt=42+(seed%370);if(Math.abs(nightMinute-eventAt)<7)return[0,0,['nightToilet','nightDrink','nightSnack'][seed%3]];return base;}
+function currentSchedule(){const couple=resolveCoupleState();if(couple.controlsMain)return[couple.window.start,couple.departure||couple.window.end,couple.activity];const m=minuteOfDay();const blocks=dailyBlocks();const base=blocks.find(([a,b])=>m>=a&&m<b)||blocks[blocks.length-1];if(base[2]!=='sleep')return base;const seed=hash(dateKey()+'|night');if(seed%10>=3)return base;const nightMinute=m<440?m+1440-1380:m-1380,eventAt=42+(seed%370);if(Math.abs(nightMinute-eventAt)<7)return[0,0,['nightToilet','nightDrink','nightSnack'][seed%3]];return base;}
 function dishFor(kind){const list=STORY.dishes[kind],salt={breakfast:3,lunch:17,dinner:31}[kind];return list[(dayNumber()*7+salt)%list.length];}
 function leisureChoice(){return 'sofa';}
 function target(id){const a=anchor[id];return a?{floor:a.room==='bedroom'?2:a.room==='kitchen'?0:1,x:a.x}:null;}
@@ -48,9 +48,9 @@ export class LifeDirector{
   // Click responses are short posture animations like the horizontal build; sleeping
   // and showering characters do not answer at all.
   react(kind=''){if(this.pose==='sleep'||this.pose==='shower')return '';const choices=['wave','nod','startle','lookback'],type=kind==='lookup'?'lookup':choices[Math.floor(Math.random()*choices.length)];this.reaction={type,timer:1.2+Math.random()*0.6};this.onChange(this.snapshot());return type;}
-  blocked(){if(this.schedule==='sleep'||this.activity==='sleep'||this.pose==='sleep')return 'sleep';if(resolveCoupleState().presence==='VISITING')return 'visit';if(this.schedule==='morning'||this.activity==='morning'||this.schedule==='shower'||this.activity==='shower'||['washHands','brush','shower'].includes(this.pose))return 'wash';return '';}
+  blocked(){if(this.schedule==='sleep'||this.activity==='sleep'||this.pose==='sleep')return 'sleep';if(resolveCoupleState().presence!=='AWAY')return 'visit';if(this.schedule==='morning'||this.activity==='morning'||this.schedule==='shower'||this.activity==='shower'||['washHands','brush','shower'].includes(this.pose))return 'wash';return '';}
   startGuitar(){if(this.activity==='guitar')return 'busy';const blocked=this.blocked();if(blocked)return blocked;this.setPlan('guitar');return 'ok';}
-  snapshot(){const step=this.current(),couple=resolveCoupleState();const elapsed=Math.max(0,(step?.duration||0)-this.timer);let lyric='';if(this.pose==='guitar'&&this.song){const i=Math.min(this.song.lyrics.length-1,Math.floor(elapsed/this.song.tempo));lyric=this.song.lyrics[i]||'';}return {schedule:this.schedule,activity:this.activity,title:couple.presence==='VISITING'?couple.label:(TITLES[this.activity]||TITLES[this.schedule]||'平凡的一天'),label:couple.presence==='VISITING'?couple.label:this.label,pose:this.pose,held:this.held,motion:this.motion,meal:this.meal,snack:this.snack,song:this.song,lyric,call:null,callLine:null,couple,girlfriend:couple.girlfriend?{presence:couple.presence,activity:couple.activity,location:couple.girlfriend,pose:couple.girlfriendPose,facing:-1}: {presence:couple.presence,activity:null},reaction:this.reaction?.type||'',reactionT:this.reaction?.timer||0,step:this.index};}
+  snapshot(){const step=this.current(),couple=resolveCoupleState();const elapsed=Math.max(0,(step?.duration||0)-this.timer),together=couple.presence!=='AWAY';let lyric='';if(this.pose==='guitar'&&this.song){const i=Math.min(this.song.lyrics.length-1,Math.floor(elapsed/this.song.tempo));lyric=this.song.lyrics[i]||'';}return {schedule:this.schedule,activity:this.activity,title:together?couple.label:(TITLES[this.activity]||TITLES[this.schedule]||'平凡的一天'),label:together?couple.label:this.label,pose:this.pose,held:this.held,motion:this.motion,meal:this.meal,snack:this.snack,song:this.song,lyric,call:null,callLine:null,couple,girlfriend:couple.girlfriend?{presence:couple.presence,activity:couple.activity,location:couple.girlfriend,pose:couple.girlfriendPose,facing:-1}: {presence:couple.presence,activity:null},reaction:this.reaction?.type||'',reactionT:this.reaction?.timer||0,step:this.index};}
   current(){return this.steps[this.index];}
   setPlan(activity){
     this.schedule=currentSchedule()[2];if(activity==='leisure')activity=leisureChoice();this.activity=activity;this.index=0;this.timer=0;this.pose='idle';this.held='';this.meal=null;this.snack=null;this.song=null;
@@ -65,6 +65,14 @@ export class LifeDirector{
       [COUPLE_ACTIVITY.IDLE_TOGETHER]:[goto('TOP_LEISURE_LEFT','在她身边坐下'),act('coupleIdle',3600,'她今晚过来了')],
       [COUPLE_ACTIVITY.DEPARTING]:[goto('TOP_LEISURE_LEFT','起身送她'),act('coupleIdle',3600,'送她下楼')]
     };
+    couplePlans[COUPLE_ACTIVITY.BED_PREP]=[goto('BED_EDGE_LEFT','走到床边'),act('coupleIdle',3600,'准备休息')];
+    couplePlans[COUPLE_ACTIVITY.BED_CHAT]=[goto('BED_LEFT','躺到床上'),act('bedChat',3600,'躺在床上聊天')];
+    couplePlans[COUPLE_ACTIVITY.CUDDLE]=[goto('BED_LEFT','靠近一些'),act('cuddle',3600,'靠在一起')];
+    couplePlans[COUPLE_ACTIVITY.KISS_GOODNIGHT]=[goto('BED_LEFT','互道晚安'),act('kissGoodnight',3600,'互道晚安')];
+    couplePlans[COUPLE_ACTIVITY.UNDER_BLANKET_INTIMACY]=[goto('BED_LEFT','关掉灯'),act('underBlanket',3600,'灯已经关了')];
+    couplePlans[COUPLE_ACTIVITY.SETTLING_TO_SLEEP]=[goto('BED_LEFT','盖好被子'),act('settlingSleep',3600,'准备睡觉')];
+    couplePlans[COUPLE_ACTIVITY.SLEEP_TOGETHER]=[goto('BED_LEFT','安静入睡'),act('sleepTogether',3600,'两个人都睡着了')];
+    couplePlans[COUPLE_ACTIVITY.WAKE_TOGETHER]=[goto('BED_LEFT','一起醒来'),act('wakeTogether',3600,'新的一天开始了')];
     plans.wakeUp=[goto('bed.sit','从床上醒来'),act('wake',8,'慢慢醒来')];
     plans.dress=[goto('wardrobe.change','走到衣柜前'),act('wardrobe',2,'挑今天的衣服'),act('change',8,'换上今天的衣服'),act('wardrobeClose',1,'关好衣柜')];
     plans.morningBuffer=[goto('window.look','看一眼窗外'),act('lookOut',20,'准备开始一天')];
