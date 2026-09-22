@@ -81,7 +81,8 @@ const evaluate = async (client, expression) => {
     await client.send('Log.enable');
     await client.send('Page.enable');
     for (let i = 0; i < 100; i++) {
-      if (await evaluate(client, "document.body.dataset.testReady==='1'")) break;
+      // document.body is null until the HTML is parsed, so guard the readiness probe.
+      if (await evaluate(client, "!!document.body&&document.body.dataset.testReady==='1'")) break;
       await sleep(200);
     }
     console.log('test page ready, clicking #run');

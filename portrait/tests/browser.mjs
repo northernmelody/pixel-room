@@ -79,6 +79,8 @@ for(const time of ['15:00:00','20:00:00']){
   report('PASS 装饰物件、窗户、家电与秋千均无弹窗无提示');
   clickAt(w,...pointFor(w,'bedroom.boba'));await sleep(30);
   check(hintOf(w).includes('玩偶'),'Plush answers with its name');
+  clickAt(w,...pointFor(w,'bedroom.melon'));await sleep(30);
+  check(hintOf(w).includes('MOMO的黄瓜'),'The cantaloupe answers with "MOMO的黄瓜", got "'+hintOf(w)+'"');
   clickAt(w,...pointFor(w,'kitchen.table'));await sleep(30);
   check(hintOf(w).length>0,'Meal hotspot answers');
   clickAt(w,...pointFor(w,'kitchen.door'));await sleep(30);

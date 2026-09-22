@@ -303,9 +303,44 @@ addMarked('towel', '毛巾和毛巾架', c => A.bathroomDecor(c, st()), 'towel')
 addMarked('potRack', '锅具挂架', c => A.kitchenDecor(c, st()), 'potRack', 'spiceShelf');
 addMarked('spiceShelf', '调料架', c => A.kitchenDecor(c, st()), 'spiceShelf');
 
-for (const plush of ['boba', 'avocado', 'bunny', 'orange', 'octopus', 'ramen']) {
+// The portrait replaces the classic orange plush with a cantaloupe slice carrying a
+// tiny face. Shape and palette follow the reference art: a crescent that is thick in
+// the middle, tapers to both tips, dips slightly along the cut face and wraps a
+// two-tone rind under the flesh.
+const MELON_PAL = { O: '#F99B56', F: '#FDAA65', L: '#8A8E4A', G: '#3B441F', K: '#16100C', M: '#16100C' };
+const MELON_ART = [
+  '..OOO...OOO..',
+  '.OFFFFFFFFFO.',
+  'OOOOOOOOOOOOO',
+  'OOOOKOOOKOOOO',
+  '.OOOOOMOOOOO.',
+  '.LLLLLLLLLLL.',
+  '..GGGGGGGGG..'
+];
+function drawMelonSlice(ctx, x, y) {
+  const outline = '#2a1c14', art = MELON_ART, h = art.length, w = art[0].length, top = y + 1;
+  ctx.fillStyle = outline;                                     // wall hook, centred over the 13px art
+  ctx.fillRect(x + Math.floor((w - 2) / 2), y, 2, 1);
+  ctx.fillRect(x + Math.floor((w - 2) / 2), y + 1, 1, 1);
+  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {    // automatic 1px outline
+    if (art[r][c] === '.') continue;
+    if (r === 0 || art[r - 1][c] === '.') ctx.fillRect(x + c, top + r - 1, 1, 1);
+    if (r === h - 1 || art[r + 1][c] === '.') ctx.fillRect(x + c, top + r + 1, 1, 1);
+    if (c === 0 || art[r][c - 1] === '.') ctx.fillRect(x + c - 1, top + r, 1, 1);
+    if (c === w - 1 || art[r][c + 1] === '.') ctx.fillRect(x + c + 1, top + r, 1, 1);
+  }
+  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+    const ch = art[r][c];
+    if (ch === '.') continue;
+    ctx.fillStyle = MELON_PAL[ch];
+    ctx.fillRect(x + c, top + r, 1, 1);
+  }
+}
+
+for (const plush of ['boba', 'avocado', 'bunny', 'octopus', 'ramen']) {
   add(`plush-${plush}`, `${plush} 像素挂件`, c => A.plush(c, plush), { plush });
 }
+add('plush-melon', '哈密瓜切片挂件', c => drawMelonSlice(c, 20, 20), { plush: 'melon' });
 
 for (let bowl = 0; bowl <= 3; bowl++) {
   P.Storage.state.items.bowl = bowl;

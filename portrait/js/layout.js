@@ -16,7 +16,7 @@ export const ITEMS = Object.freeze([
   item('bedroom.boba','plush-boba','bedroom',49,86,'珍珠奶茶玩偶，卧室墙上的六位小伙伴之一。',{action:'name',tip:'奶茶玩偶'}),
   item('bedroom.avocado','plush-avocado','bedroom',65,86,'牛油果玩偶，保留原来的绿色像素。',{action:'name',tip:'牛油果玩偶'}),
   item('bedroom.bunny','plush-bunny','bedroom',81,86,'小兔玩偶，长长的耳朵。',{action:'name',tip:'小兔玩偶'}),
-  item('bedroom.orange','plush-orange','bedroom',49,103,'橘子玩偶，暖色的小小挂件。',{action:'name',tip:'橘子玩偶'}),
+  item('bedroom.melon','plush-melon','bedroom',45,102,'切成月牙的哈密瓜挂件，切面上有一张小脸。点击看看它叫什么。',{action:'name',tip:'MOMO的黄瓜'}),
   item('bedroom.octopus','plush-octopus','bedroom',65,102,'小章鱼玩偶，住在第二排。',{action:'name',tip:'小章鱼玩偶'}),
   item('bedroom.ramen','plush-ramen','bedroom',81,102,'拉面玩偶，六个墙面玩偶全部保留。',{action:'name',tip:'拉面玩偶'}),
   item('bedroom.ac','ac','bedroom',19,74,'夏季的空调。原本的季节物件，随夏季预览出现。',{season:'summer'}),

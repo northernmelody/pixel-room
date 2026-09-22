@@ -115,9 +115,15 @@ const actionIn=(id)=>{const item=ITEMS.find(i=>i.id===id),r=rectOf(item),found=n
 const ACTIONS=new Set(['computer','letters','guitar','wardrobe','fridge','name','meal','door']);
 assert.deepEqual(new Set(ITEMS.filter(i=>i.action).map(i=>i.action)),ACTIONS,'Only classic-equivalent click actions exist');
 assert.equal(ITEMS.filter(i=>i.action).length,16,'Clickable object count stays bounded');
-for(const [id,action] of [['bedroom.wardrobe','wardrobe'],['bedroom.guitar','guitar'],['bedroom.bed','name'],['bedroom.boba','name'],['bedroom.avocado','name'],['bedroom.bunny','name'],['bedroom.orange','name'],['bedroom.octopus','name'],['bedroom.ramen','name'],['workspace.bookshelf','letters'],['workspace.desk','computer'],['kitchen.fridge','fridge'],['kitchen.cabinets','meal'],['kitchen.counter','meal'],['kitchen.table','meal'],['kitchen.door','door']]){
+for(const [id,action] of [['bedroom.wardrobe','wardrobe'],['bedroom.guitar','guitar'],['bedroom.bed','name'],['bedroom.boba','name'],['bedroom.avocado','name'],['bedroom.bunny','name'],['bedroom.melon','name'],['bedroom.octopus','name'],['bedroom.ramen','name'],['workspace.bookshelf','letters'],['workspace.desk','computer'],['kitchen.fridge','fridge'],['kitchen.cabinets','meal'],['kitchen.counter','meal'],['kitchen.table','meal'],['kitchen.door','door']]){
   assert.ok(actionIn(id).has(action),id+' exposes '+action);
 }
+// The wall plush that used to be an orange is now a cantaloupe slice named by MOMO.
+assert.equal(ITEMS.filter(i=>i.art==='plush-melon').length,1,'The melon plush replaced the orange one');
+assert.equal(ITEMS.find(i=>i.id==='bedroom.melon').tip,'MOMO的黄瓜','The melon answers with the requested copy');
+assert.equal(ITEM_META['plush-melon'].label,'哈密瓜切片挂件');
+assert.ok(SPRITES['plush-melon'].width>=9&&SPRITES['plush-melon'].height>=8,'The melon sprite has room for rind and face');
+assert.equal(SPRITES['plush-orange'],undefined,'The old orange sprite is gone');
 // Decorations may sit under a switchable lamp, but they must not open anything themselves.
 const actionableRects=ITEMS.filter(i=>i.action).map(rectOf);let inertPixels=0;
 for(const item of ITEMS.filter(i=>!i.action)){

@@ -11,7 +11,7 @@ const DEFINITIONS = {
   'plush-boba': ['plush-boba', '珍珠奶茶挂件'],
   'plush-avocado': ['plush-avocado', '牛油果挂件'],
   'plush-bunny': ['plush-bunny', '白兔挂件'],
-  'plush-orange': ['plush-orange', '橙色玩偶挂件'],
+  'plush-melon': ['plush-melon', '哈密瓜切片挂件'],
   'plush-octopus': ['plush-octopus', '粉色章鱼挂件'],
   'plush-ramen': ['plush-ramen', '拉面挂件'],
   'window-bedroom': ['window-bedroom:spring:day', '卧室窗户', { options: { season: [...SEASONS], night: 'boolean' } }],
